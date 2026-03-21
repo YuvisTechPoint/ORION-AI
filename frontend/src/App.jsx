@@ -88,6 +88,7 @@ export default function App() {
       const resp = await fetch(`${API_BASE}/submit-github?force_real=true`, {
         method: "POST",
         body: fd,
+        credentials: "include",
       });
       const data = await (resp.headers.get("content-type")?.includes("application/json") ? resp.json() : resp.text());
       if (!resp.ok) {
@@ -124,6 +125,7 @@ export default function App() {
           config_text: configText,
           repo_files: hasUploadedFiles ? repoFiles : undefined,
         }),
+        credentials: "include",
       });
       if (!response.ok) {
         throw new Error(`Submit failed with ${response.status}`);
@@ -185,7 +187,7 @@ export default function App() {
 
   async function checkAuthStatus() {
     try {
-      const response = await fetch(`${API_BASE}/auth/status`, { credentials: "include" });
+      const response = await fetch(`${API_BASE}/api/v1/auth/status`, { credentials: "include" });
       if (!response.ok) {
         throw new Error(`Auth status failed with ${response.status}`);
       }
@@ -193,7 +195,7 @@ export default function App() {
       setAuthStatus(data);
 
       if (data.authenticated) {
-        const meResp = await fetch(`${API_BASE}/auth/me`, { credentials: "include" });
+        const meResp = await fetch(`${API_BASE}/api/v1/auth/me`, { credentials: "include" });
         if (meResp.ok) {
           const profile = await meResp.json();
           setUserProfile(profile);
@@ -297,6 +299,7 @@ export default function App() {
           ...(deploymentApiKey ? { "X-API-Key": deploymentApiKey } : {}),
         },
         body: JSON.stringify({ pipeline_id: pipelineId, approved_by: "dashboard" }),
+        credentials: "include",
       });
       if (!response.ok) {
         throw new Error(`Trigger deployment failed with ${response.status}`);
@@ -324,6 +327,7 @@ export default function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        credentials: "include",
       });
       if (!response.ok) {
         throw new Error(`Analyze logs failed with ${response.status}`);
@@ -436,12 +440,12 @@ export default function App() {
                 <span className="auth-name">@{authStatus.username || userProfile?.username}</span>
                 <span className="auth-subtext">GitHub token ready</span>
               </div>
-              <a className="btn-logout" href={`${API_BASE}/auth/logout`}>
+              <a className="btn-logout" href={`${API_BASE}/api/v1/auth/logout`}>
                 Logout
               </a>
             </div>
           ) : (
-            <a className="btn-github-login" href={`${API_BASE}/auth/github`}>
+            <a className="btn-github-login" href={`${API_BASE}/api/v1/auth/github`}>
               <svg
                 aria-hidden="true"
                 viewBox="0 0 24 24"
@@ -463,7 +467,7 @@ export default function App() {
             <path d="M11.001 3.003a2 2 0 0 1 1.998 0l8.485 4.9a2 2 0 0 1 .998 1.732v9.8a2 2 0 0 1-1 1.732l-8.485 4.9a2 2 0 0 1-2 0l-8.5-4.9a2 2 0 0 1-1-1.732v-9.8a2 2 0 0 1 1-1.732zM12 5.135 4 9.7v8.6l8 4.565 8-4.565V9.7L12 5.135Zm-1 4.365h2v5h-2zm0 6h2v2h-2z" />
           </svg>
           <span>
-            You are not logged in with GitHub. Auto-PR features require GitHub authentication. <a href={`${API_BASE}/auth/github`}>Login now →</a>
+            You are not logged in with GitHub. Auto-PR features require GitHub authentication. <a href={`${API_BASE}/api/v1/auth/github`}>Login now →</a>
           </span>
         </div>
       )}

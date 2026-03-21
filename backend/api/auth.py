@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import secrets
+import hashlib
+import hmac
 from datetime import datetime
 
 import httpx
@@ -16,17 +18,49 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 logger = get_logger("auth.github")
 
 
+def generate_state_with_signature() -> tuple[str, str]:
+    """Generate a cryptographically signed state token."""
+    state_token = secrets.token_urlsafe(24)
+    # Create HMAC signature of the state token
+    signature = hmac.new(
+        settings.session_secret_key.encode(),
+        state_token.encode(),
+        hashlib.sha256
+    ).hexdigest()[:16]
+    # Combine state and signature
+    signed_state = f"{state_token}.{signature}"
+    return state_token, signed_state
+
+
+def validate_state_signature(signed_state: str) -> bool:
+    """Validate a cryptographically signed state token."""
+    try:
+        state_token, signature = signed_state.rsplit(".", 1)
+        expected_sig = hmac.new(
+            settings.session_secret_key.encode(),
+            state_token.encode(),
+            hashlib.sha256
+        ).hexdigest()[:16]
+        return hmac.compare_digest(signature, expected_sig)
+    except (ValueError, AttributeError):
+        return False
+
+
 @router.get("/github")
 async def github_login(request: Request) -> RedirectResponse:
-    state = secrets.token_urlsafe(32)
-    request.session["oauth_state"] = state
+    state_token, signed_state = generate_state_with_signature()
+    # Also store in session as backup
+    request.session["oauth_state_token"] = state_token
+    
     github_auth_url = (
         "https://github.com/login/oauth/authorize"
         f"?client_id={settings.github_client_id}"
         "&scope=repo,read:user,user:email"
         f"&redirect_uri={settings.github_redirect_uri}"
-        f"&state={state}"
+        f"&state={signed_state}"
     )
+    logger.info("GitHub OAuth initiated")
+    
     return RedirectResponse(url=github_auth_url, status_code=302)
 
 
@@ -38,13 +72,19 @@ async def github_callback(
     state: str | None = None,
 ) -> RedirectResponse:
     if error:
+        logger.error(f"GitHub OAuth error: {error}")
         raise HTTPException(status_code=400, detail=f"GitHub OAuth denied: {error}")
     if code is None:
+        logger.error("No authorization code received")
         raise HTTPException(status_code=400, detail="No authorization code received from GitHub")
-    if state != request.session.get("oauth_state"):
+    
+    # Validate state signature
+    if not state or not validate_state_signature(state):
+        logger.error(f"State validation failed: {state is not None}")
         raise HTTPException(status_code=400, detail="Invalid OAuth state — possible CSRF attack")
 
-    request.session.pop("oauth_state", None)
+    # Clean up session
+    request.session.pop("oauth_state_token", None)
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         token_resp = await client.post(

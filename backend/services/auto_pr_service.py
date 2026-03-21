@@ -254,13 +254,14 @@ class AutoPRService:
         bundle.pr_number = pr_number
         return pr_number
 
-    def _build_issue_bundle(self, category: str, issues: list[dict[str, Any]]) -> IssueBundle:
+    def _build_issue_bundle(self, category: str, issues: list[dict[str, Any]], run_id: str) -> IssueBundle:
         sanitized = category.replace("_", "-")
+        suffix = f"-{run_id[:6]}" if run_id else ""
         return IssueBundle(
             category=sanitized,
             issues=issues,
             file_patches=[],
-            branch_name=f"orion/{sanitized}-fixes",
+            branch_name=f"orion/{sanitized}-fixes{suffix}",
             pr_title=f"fix({sanitized}): automated ORION remediation",
             pr_body="",
         )
@@ -336,7 +337,7 @@ class AutoPRService:
         patch_sets = await asyncio.gather(*patch_tasks)
 
         for category, patches in zip(categories, patch_sets):
-            bundle = self._build_issue_bundle(category, grouped[category])
+            bundle = self._build_issue_bundle(category, grouped[category], run_id)
             bundle.file_patches = [patch for patch in patches if isinstance(patch, dict) and patch.get("file_path")]
             if not bundle.file_patches:
                 logger.warning("No file patches generated for %s; using fallback report patch", category)

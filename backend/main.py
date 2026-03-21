@@ -21,7 +21,7 @@ def create_app() -> FastAPI:
         SessionMiddleware,
         secret_key=settings.session_secret_key,
         max_age=settings.oauth_token_expiry_hours * 3600,
-        same_site="lax",
+        same_site="none",
         https_only=False,
     )
     app.add_middleware(

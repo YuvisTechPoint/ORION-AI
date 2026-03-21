@@ -149,6 +149,7 @@ async def submit_archive(
 
 @router.post("/submit-github", response_model=SubmitCodeResponse)
 async def submit_github(
+    http_request: Request,
     repo_url: str = Form(...),
     branch: str | None = Form(default="main"),
     code_entry: str | None = Form(default=None),

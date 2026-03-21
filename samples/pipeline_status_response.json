@@ -1,0 +1,21 @@
+{
+  "pipeline_id": "9d74eb2d-c4f4-42a9-99b3-963f9f897f40",
+  "repo_name": "payment-service",
+  "current_stage": "completed",
+  "status": "completed",
+  "history": [
+    {"stage": "dev", "message": "Code submitted"},
+    {"stage": "dev", "message": "Code analysis completed"},
+    {"stage": "dev", "message": "Security scan completed"},
+    {"stage": "qa", "message": "QA result: pass"},
+    {"stage": "stress", "message": "Stress test result: pass"},
+    {"stage": "approval", "message": "all quality gates passed"},
+    {"stage": "completed", "message": "deployment successful"}
+  ],
+  "artifacts": {
+    "code_analysis": {"quality_score": 96},
+    "security": {"blocked": false},
+    "approval": {"next_stage": "deployment", "approved": true},
+    "deployment": {"status": "deployed", "environment": "staging"}
+  }
+}

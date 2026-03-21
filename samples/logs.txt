@@ -1,0 +1,4 @@
+2026-03-21T10:12:01Z INFO deployment started version=1.4.2
+2026-03-21T10:12:05Z WARN cpu_usage=93%
+2026-03-21T10:12:06Z ERROR timeout connecting to db shard=us-east-2
+2026-03-21T10:12:08Z WARN retry_count=5

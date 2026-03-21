@@ -1,8 +1,12 @@
 import logging
 import random
+import tempfile
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
+from anthropic import Anthropic
+from agents.full_scan_orchestrator import FullScanOrchestrator
 from agents.code_analysis import CodeAnalysisAgent
 from agents.deployment import DeploymentAgent
 from agents.monitoring import MonitoringAgent
@@ -11,7 +15,6 @@ from agents.security import SecurityAgent
 from core.config import Settings
 from core.llm_client import LLMClient
 from core.queue import EventBus, build_event_bus
-from core.rule_engine import run_quality_rules, run_security_rules
 from models.schemas import (
     AnalyzeLogsRequest,
     CodeAnalysisResult,
@@ -23,6 +26,7 @@ from models.schemas import (
     SubmitCodeRequest,
 )
 from services.memory_store import InMemoryAgentMemoryStore
+from services.auto_pr_service import AutoPRService
 from services.qa_runner import QARunner
 from services.retriever import build_retriever
 from services.state_store import BaseStateStore, build_state_store
@@ -34,9 +38,11 @@ class Orchestrator:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         llm_client = LLMClient(settings)
+        self.llm_client = llm_client
 
         self.memory_store = InMemoryAgentMemoryStore()
         self.retriever = build_retriever(settings.retriever_backend)
+        self.full_scan_orchestrator = FullScanOrchestrator(llm_client, qa_timeout_seconds=settings.qa_timeout_seconds)
 
         self.code_agent = CodeAnalysisAgent(llm_client)
         self.security_agent = SecurityAgent(llm_client)
@@ -59,7 +65,7 @@ class Orchestrator:
         self.event_bus: EventBus = build_event_bus(settings.queue_backend, settings.redis_url)
         self.qa_runner = QARunner(timeout_seconds=settings.qa_timeout_seconds)
 
-    async def submit_code(self, request: SubmitCodeRequest) -> PipelineState:
+    async def submit_code(self, request: SubmitCodeRequest, github_token: str | None = None) -> PipelineState:
         state = PipelineState(repo_name=request.repo_name)
         self._record(state, "dev", "Code submitted")
         await self._publish_pipeline_event(state, "Code submitted")
@@ -73,36 +79,82 @@ class Orchestrator:
             "repo_name": request.repo_name,
         }
 
-        code_raw = self.code_agent.run(agent_payload)
+        combined_issues = await self.full_scan_orchestrator.execute(
+            repo_path="",
+            diff_text=request.diff or "",
+            pipeline_run_id=state.pipeline_id,
+            payload=agent_payload,
+        )
+        state.artifacts["full_scan_combined"] = combined_issues
+        self._record(state, "dev", "Full scan completed")
+        await self._publish_pipeline_event(state, "Full scan completed")
+
+        if request.enable_auto_pr:
+            if self._has_non_passing_findings(combined_issues):
+                candidate_token = github_token or self._resolve_github_token()
+                repo_path = self._materialize_repo_snapshot(request)
+                try:
+                    auto_pr_service = AutoPRService(
+                        github_token=candidate_token,
+                        repo_full_name=request.repo_full_name or request.repo_name,
+                        clone_url=request.clone_url or "",
+                        base_branch=request.branch,
+                    )
+                except ValueError as exc:
+                    state.current_stage = "blocked"
+                    state.status = "blocked"
+                    missing_token_message = f"Pipeline blocked: {exc}"
+                    state.artifacts["auto_pr_registry"] = {
+                        "branches": [],
+                        "reason": "github-token-not-configured",
+                    }
+                    self._record(state, "blocked", missing_token_message)
+                    await self._publish_pipeline_event(state, missing_token_message)
+                    self.state_store.upsert(state)
+                    return state
+
+                try:
+                    anthropic_key = self.settings.llm_api_key
+                    anthropic_client = Anthropic(api_key=anthropic_key) if anthropic_key else None
+                    bundles = await auto_pr_service.open_all_prs(
+                        combined_issues=combined_issues,
+                        repo_path=repo_path,
+                        run_id=state.pipeline_id,
+                        anthropic_client=anthropic_client,
+                    )
+
+                    state.artifacts["auto_pr_registry"] = {
+                        "branches": [
+                            {
+                                "branch_name": bundle.branch_name,
+                                "pr_number": bundle.pr_number,
+                                "category": bundle.category,
+                                "merged": False,
+                                "deleted": False,
+                            }
+                            for bundle in bundles
+                        ],
+                        "reason": "prs-opened" if bundles else "no-prs-opened",
+                    }
+                    state.current_stage = "blocked_with_prs_sent"
+                    state.status = "blocked_with_prs_sent"
+                    pr_urls = self._build_pr_urls(request.repo_full_name or request.repo_name, bundles)
+                    blocked_message = f"Pipeline blocked. {len(bundles)} fix PRs opened: {pr_urls}"
+                    self._record(state, "blocked_with_prs_sent", blocked_message)
+                    await self._publish_pipeline_event(state, blocked_message)
+                    self.state_store.upsert(state)
+                    return state
+                finally:
+                    await auto_pr_service.close()
+
+        code_raw = combined_issues.get("code_issues", {}) if isinstance(combined_issues, dict) else {}
         code_result = self._safe_validate(CodeAnalysisResult, code_raw, fallback={"summary": "analysis unavailable"})
-        rule_quality_issues = run_quality_rules(request.code, request.diff or "", request.config_text or "")
-        if rule_quality_issues:
-            merged_quality = code_result.model_dump()
-            merged_quality_issues = merged_quality.get("issues", [])
-            merged_quality_issues.extend(rule_quality_issues)
-            merged_quality["issues"] = merged_quality_issues
-            # Penalize quality score based on deterministic findings.
-            merged_quality["quality_score"] = max(0, int(merged_quality.get("quality_score", 100)) - (len(rule_quality_issues) * 5))
-            code_result = self._safe_validate(CodeAnalysisResult, merged_quality, fallback={"summary": "analysis unavailable"})
         state.artifacts["code_analysis"] = code_result.model_dump()
         self._record(state, "dev", "Code analysis completed")
         await self._publish_pipeline_event(state, "Code analysis completed")
 
-        security_raw = self.security_agent.run(agent_payload)
+        security_raw = combined_issues.get("security_issues", {}) if isinstance(combined_issues, dict) else {}
         security_result = self._safe_validate(SecurityResult, security_raw, fallback={"summary": "security scan unavailable"})
-        rule_security_issues = run_security_rules(
-            request.code,
-            request.diff or "",
-            request.config_text or "",
-            request.repo_files or {},
-        )
-        if rule_security_issues:
-            merged_security = security_result.model_dump()
-            merged_security_issues = merged_security.get("issues", [])
-            merged_security_issues.extend(rule_security_issues)
-            merged_security["issues"] = merged_security_issues
-            merged_security["blocked"] = any(issue.get("severity") == "high" for issue in merged_security_issues)
-            security_result = self._safe_validate(SecurityResult, merged_security, fallback={"summary": "security scan unavailable"})
         state.artifacts["security"] = security_result.model_dump()
         self._record(state, "dev", "Security scan completed")
         await self._publish_pipeline_event(state, "Security scan completed")
@@ -140,7 +192,10 @@ class Orchestrator:
             return state
 
         state.current_stage = "qa"
-        qa_passed, qa_details = self._run_qa_stage(code_result=code_result, repo_files=request.repo_files or {})
+        qa_details = combined_issues.get("qa_issues", {}) if isinstance(combined_issues, dict) else {}
+        if not isinstance(qa_details, dict):
+            qa_details = {"passed": False, "summary": "QA result unavailable"}
+        qa_passed = bool(qa_details.get("passed", True))
         state.artifacts["qa"] = qa_details
         self._record(state, "qa", f"QA result: {'pass' if qa_passed else 'fail'}")
         await self._publish_pipeline_event(state, f"QA result: {'pass' if qa_passed else 'fail'}")
@@ -253,6 +308,69 @@ class Orchestrator:
 
         self.state_store.upsert(state)
         return state
+
+    def _resolve_github_token(self) -> str:
+        token = (self.settings.github_token or "").strip()
+        if token:
+            return token
+
+        # Fallback for local dev cases where long-lived singletons hold stale settings.
+        env_path = Path(__file__).resolve().parents[1] / ".env"
+        if not env_path.exists():
+            return ""
+
+        try:
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                if not line or line.lstrip().startswith("#"):
+                    continue
+                if not line.startswith("GITHUB_TOKEN="):
+                    continue
+                _, value = line.split("=", 1)
+                value = value.strip().strip('"').strip("'")
+                if value:
+                    return value
+        except OSError:
+            return ""
+
+        return ""
+
+    def _has_non_passing_findings(self, combined_issues: dict[str, Any]) -> bool:
+        code_issues = combined_issues.get("code_issues", {})
+        security_issues = combined_issues.get("security_issues", {})
+        qa_issues = combined_issues.get("qa_issues", {})
+
+        code_non_passing = isinstance(code_issues, dict) and bool(code_issues.get("issues"))
+        security_non_passing = isinstance(security_issues, dict) and (
+            bool(security_issues.get("issues")) or bool(security_issues.get("blocked"))
+        )
+        qa_non_passing = isinstance(qa_issues, dict) and (not bool(qa_issues.get("passed", True)))
+        return code_non_passing or security_non_passing or qa_non_passing
+
+    def _build_pr_urls(self, repo_full_name: str, bundles: list[Any]) -> str:
+        urls = [
+            f"https://github.com/{repo_full_name}/pull/{bundle.pr_number}"
+            for bundle in bundles
+            if getattr(bundle, "pr_number", None) is not None
+        ]
+        return ", ".join(urls)
+
+    def _materialize_repo_snapshot(self, request: SubmitCodeRequest) -> str:
+        tmp_dir = tempfile.mkdtemp(prefix="orion_repo_")
+        root = Path(tmp_dir)
+        repo_files = request.repo_files or {}
+
+        if not repo_files and request.code:
+            (root / "main.py").write_text(request.code, encoding="utf-8")
+            return tmp_dir
+
+        for rel_path, content in repo_files.items():
+            path = Path(rel_path)
+            if path.is_absolute() or ".." in path.parts:
+                continue
+            target = root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+        return tmp_dir
 
     def get_status(self, pipeline_id: str) -> PipelineState | None:
         return self.state_store.get(pipeline_id)

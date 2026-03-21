@@ -1,0 +1,21 @@
+[Unit]
+Description=ORION AI Pipeline Celery Beat
+After=network.target postgresql.service redis.service orion-api.service
+Wants=postgresql.service redis.service
+
+[Service]
+Type=exec
+User=orion
+Group=orion
+WorkingDirectory=/opt/orion
+EnvironmentFile=/etc/orion/orion.env
+ExecStart=/opt/orion/venv/bin/celery -A app.tasks.pipeline_tasks.celery_app beat --loglevel=info --schedule=/var/lib/orion/celerybeat-schedule
+Restart=always
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=orion-beat
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

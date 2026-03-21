@@ -1,5 +1,10 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi import File, UploadFile, Form, Query
+from fastapi import Request
+import hashlib
+import hmac
 import zipfile
 import tempfile
 from pathlib import Path
@@ -21,24 +26,52 @@ from models.schemas import (
 from services.orchestrator import Orchestrator
 from services.auth import AuthService
 from services.preflight import preflight_report
+from services.github_service import GitHubService
 
 router = APIRouter()
 _ORCHESTRATOR: Orchestrator | None = None
+
+
+async def get_validated_github_payload(
+    request: Request,
+    settings: Settings,
+    x_hub_signature_256: str | None,
+) -> dict:
+    if not x_hub_signature_256:
+        raise HTTPException(status_code=401, detail="Missing GitHub signature header")
+    if not settings.github_token:
+        raise HTTPException(status_code=500, detail="GitHub secret/token not configured")
+
+    body = await request.body()
+    digest = hmac.new(settings.github_token.encode("utf-8"), body, hashlib.sha256).hexdigest()
+    expected = f"sha256={digest}"
+    if not hmac.compare_digest(expected, x_hub_signature_256):
+        raise HTTPException(status_code=401, detail="Invalid GitHub signature")
+
+    try:
+        payload = await request.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
+    return payload
 
 
 def get_orchestrator(settings: Settings = Depends(get_settings)) -> Orchestrator:
     global _ORCHESTRATOR
     if _ORCHESTRATOR is None:
         _ORCHESTRATOR = Orchestrator(settings)
+    else:
+        _ORCHESTRATOR.settings = settings
     return _ORCHESTRATOR
 
 
 @router.post("/submit-code", response_model=SubmitCodeResponse)
 async def submit_code(
     request: SubmitCodeRequest,
+    http_request: Request,
     orchestrator: Orchestrator = Depends(get_orchestrator),
 ) -> SubmitCodeResponse:
-    state = await orchestrator.submit_code(request)
+    session_token = http_request.session.get("github_token") if hasattr(http_request, "session") else None
+    state = await orchestrator.submit_code(request, github_token=session_token)
     return SubmitCodeResponse(
         pipeline_id=state.pipeline_id,
         current_stage=state.current_stage,
@@ -119,6 +152,7 @@ async def submit_github(
     repo_url: str = Form(...),
     branch: str | None = Form(default="main"),
     code_entry: str | None = Form(default=None),
+    enable_auto_pr: bool = Form(default=True),
     force_real: bool = Query(default=False),
     orchestrator: Orchestrator = Depends(get_orchestrator),
     settings: Settings = Depends(get_settings),
@@ -148,6 +182,23 @@ async def submit_github(
         headers["Authorization"] = f"token {settings.github_token}"
 
     async with httpx.AsyncClient(follow_redirects=True, headers=headers) as client:
+        if settings.github_token:
+            try:
+                repo_meta = await client.get(f"https://api.github.com/repos/{owner}/{repo_name}", timeout=20.0)
+                if repo_meta.status_code == 200:
+                    permissions = repo_meta.json().get("permissions", {})
+                    if not bool(permissions.get("push", False)):
+                        raise HTTPException(
+                            status_code=403,
+                            detail=(
+                                f"Configured GITHUB_TOKEN does not have push access to {owner}/{repo_name}. "
+                                "Use a token with write access to this repository or run against a repository you can push to."
+                            ),
+                        )
+            except httpx.RequestError:
+                # If permission preflight cannot run, continue and let main fetch path decide.
+                pass
+
         try:
             # If we have a token, try the API zipball endpoint (works for private repos)
             if settings.github_token:
@@ -204,7 +255,17 @@ async def submit_github(
 
             from models.schemas import SubmitCodeRequest as SCR
 
-            request = SCR(repo_name=repo_name, code=primary_code, diff="", config_text="", repo_files=repo_files)
+            request = SCR(
+                repo_name=repo_name,
+                code=primary_code,
+                diff="",
+                config_text="",
+                repo_files=repo_files,
+                enable_auto_pr=enable_auto_pr,
+                repo_full_name=f"{owner}/{repo_name}",
+                clone_url=repo_url,
+                branch=branch or "main",
+            )
 
             # Optionally force real QA mode for this orchestrator instance
             original_qa_mode = orchestrator.settings.qa_mode
@@ -212,7 +273,11 @@ async def submit_github(
                 if force_real:
                     orchestrator.settings.qa_mode = "real"
 
-                state = await orchestrator.submit_code(request)
+                session_token = None
+                if http_request and hasattr(http_request, "session"):
+                    session_token = http_request.session.get("github_token")
+
+                state = await orchestrator.submit_code(request, github_token=session_token)
             finally:
                 orchestrator.settings.qa_mode = original_qa_mode
 
@@ -272,6 +337,11 @@ def health(settings: Settings = Depends(get_settings)) -> HealthResponse:
     )
 
 
+@router.get("/api/v1/pipeline/health", response_model=HealthResponse)
+def pipeline_health(settings: Settings = Depends(get_settings)) -> HealthResponse:
+    return health(settings)
+
+
 @router.websocket("/ws/pipeline-status/{pipeline_id}")
 async def pipeline_status_ws(
     websocket: WebSocket,
@@ -301,7 +371,105 @@ async def pipeline_status_ws(
         return
 
 
+@router.websocket("/ws/analyze-logs")
+async def analyze_logs_ws(
+    websocket: WebSocket,
+    orchestrator: Orchestrator = Depends(get_orchestrator),
+) -> None:
+    await websocket.accept()
+    last_request: AnalyzeLogsRequest | None = None
+
+    try:
+        while True:
+            if websocket.client_state != WebSocketState.CONNECTED:
+                break
+
+            try:
+                payload = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
+                last_request = AnalyzeLogsRequest.model_validate(payload)
+            except asyncio.TimeoutError:
+                if last_request is None:
+                    continue
+            except ValueError:
+                await websocket.send_json({"type": "error", "message": "Invalid JSON payload"})
+                continue
+            except Exception as exc:  # noqa: BLE001
+                await websocket.send_json({"type": "error", "message": f"Invalid monitoring payload: {exc}"})
+                continue
+
+            if last_request is None:
+                continue
+
+            result = await asyncio.to_thread(orchestrator.analyze_logs, last_request)
+            await websocket.send_json(
+                {
+                    "type": "monitoring_result",
+                    "pipeline_id": last_request.pipeline_id,
+                    "result": result.model_dump(),
+                }
+            )
+    except WebSocketDisconnect:
+        return
+
+
 @router.get("/runtime-config", response_model=RuntimeConfigResponse)
 def runtime_config(settings: Settings = Depends(get_settings)) -> RuntimeConfigResponse:
     report = preflight_report(settings)
     return RuntimeConfigResponse.model_validate(report)
+
+
+@router.post("/api/v1/webhook/github/pr")
+async def github_pr_webhook(
+    request: Request,
+    x_hub_signature_256: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+    orchestrator: Orchestrator = Depends(get_orchestrator),
+) -> dict:
+    payload = await get_validated_github_payload(request, settings, x_hub_signature_256)
+    if payload.get("action") != "closed":
+        return {"processed": False, "reason": "ignored-action"}
+
+    pull_request = payload.get("pull_request", {})
+    if not pull_request.get("merged", False):
+        return {"processed": False, "reason": "not-merged"}
+
+    repository = payload.get("repository", {})
+    repo_full_name = repository.get("full_name")
+    branch_name = pull_request.get("head", {}).get("ref")
+    pr_number = pull_request.get("number")
+    if not repo_full_name or not branch_name:
+        raise HTTPException(status_code=400, detail="Missing repository or branch data")
+
+    matched_state = None
+    matched_branch = None
+    for state in orchestrator.state_store.list_states():
+        registry = state.artifacts.get("auto_pr_registry", {}) if isinstance(state.artifacts, dict) else {}
+        branches = registry.get("branches", []) if isinstance(registry, dict) else []
+        for item in branches:
+            if isinstance(item, dict) and item.get("branch_name") == branch_name:
+                matched_state = state
+                matched_branch = item
+                break
+        if matched_state is not None:
+            break
+
+    if matched_state is None or matched_branch is None:
+        return {"processed": False, "reason": "branch-not-found", "pr_number": pr_number}
+
+    github_service = GitHubService(settings.github_token)
+    try:
+        deleted = await github_service.delete_branch(repo_full_name, branch_name)
+    finally:
+        await github_service.close()
+
+    matched_branch["merged"] = True
+    matched_branch["deleted"] = deleted
+    matched_branch["merged_and_deleted"] = deleted
+    orchestrator.state_store.upsert(matched_state)
+    return {
+        "processed": True,
+        "repo_full_name": repo_full_name,
+        "branch_name": branch_name,
+        "pr_number": pr_number,
+        "deleted": deleted,
+    }

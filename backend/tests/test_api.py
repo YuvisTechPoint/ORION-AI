@@ -1,4 +1,6 @@
 import json
+import hashlib
+import hmac
 
 from fastapi.testclient import TestClient
 
@@ -6,7 +8,9 @@ from api.routes import get_orchestrator
 from core.config import Settings, get_settings
 from core.llm_client import LLMClient
 from main import app
+from models.schemas import PipelineState
 from services.orchestrator import Orchestrator
+from services.github_service import GitHubService
 
 
 def _fake_generate(self: LLMClient, prompt: str) -> str:
@@ -121,11 +125,91 @@ def test_submit_status_and_logs(monkeypatch, tmp_path) -> None:
         assert logs.status_code == 200
         assert "db timeout" in logs.json()["anomalies"]
 
+        with client.websocket_connect("/ws/analyze-logs") as ws:
+            ws.send_json(
+                {
+                    "pipeline_id": pipeline_id,
+                    "logs": "ERROR timeout",
+                    "multimodal_inputs": [],
+                }
+            )
+            monitoring_event = ws.receive_json()
+            assert monitoring_event["type"] == "monitoring_result"
+            assert monitoring_event["pipeline_id"] == pipeline_id
+            assert "db timeout" in monitoring_event["result"]["anomalies"]
+
         runtime = client.get("/runtime-config")
         assert runtime.status_code == 200
         runtime_json = runtime.json()
         assert runtime_json["queue_backend"] == "memory"
         assert runtime_json["database_backend"] == "sqlite"
         assert runtime_json["qa_mode"] == "simulated"
+
+    app.dependency_overrides.clear()
+
+
+def test_github_pr_webhook_deletes_branch(monkeypatch, tmp_path) -> None:
+    async def _fake_delete_branch(self, repo_full_name: str, branch_name: str) -> bool:
+        return True
+
+    monkeypatch.setattr(GitHubService, "delete_branch", _fake_delete_branch)
+
+    db_path = tmp_path / "api_webhook.db"
+    orchestrator = Orchestrator(
+        Settings(
+            DATABASE_URL=f"sqlite:///{db_path}",
+            QUEUE_BACKEND="memory",
+            QA_MODE="simulated",
+            GITHUB_TOKEN="secret-token",
+        )
+    )
+    test_settings = Settings(
+        DATABASE_URL=f"sqlite:///{db_path}",
+        QUEUE_BACKEND="memory",
+        QA_MODE="simulated",
+        GITHUB_TOKEN="secret-token",
+    )
+
+    state = PipelineState(repo_name="svc")
+    state.artifacts["auto_pr_registry"] = {
+        "branches": [
+            {
+                "branch_name": "orion/security-fixes",
+                "pr_number": 12,
+                "category": "security",
+                "merged": False,
+                "deleted": False,
+            }
+        ]
+    }
+    orchestrator.state_store.upsert(state)
+
+    app.dependency_overrides[get_orchestrator] = lambda: orchestrator
+    app.dependency_overrides[get_settings] = lambda: test_settings
+
+    payload = {
+        "action": "closed",
+        "pull_request": {
+            "merged": True,
+            "number": 12,
+            "head": {"ref": "orion/security-fixes"},
+        },
+        "repository": {"full_name": "owner/repo"},
+    }
+    body = json.dumps(payload).encode("utf-8")
+    sig = "sha256=" + hmac.new(b"secret-token", body, hashlib.sha256).hexdigest()
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/webhook/github/pr",
+            content=body,
+            headers={"X-Hub-Signature-256": sig, "Content-Type": "application/json"},
+        )
+        assert response.status_code == 200
+        assert response.json()["processed"] is True
+        updated = orchestrator.get_status(state.pipeline_id)
+        branch = updated.artifacts["auto_pr_registry"]["branches"][0]
+        assert branch["merged"] is True
+        assert branch["deleted"] is True
 
     app.dependency_overrides.clear()

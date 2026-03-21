@@ -2,10 +2,7 @@ import re
 from typing import Any
 
 
-def run_quality_rules(code: str, diff: str, config_text: str) -> list[dict[str, Any]]:
-    text = "\n".join([code or "", diff or "", config_text or ""])
-    findings: list[dict[str, Any]] = []
-
+def _append_quality_findings(text: str, file_path: str, findings: list[dict[str, Any]]) -> None:
     if re.search(r"\bTODO\b", text, flags=re.IGNORECASE):
         findings.append(
             {
@@ -14,6 +11,7 @@ def run_quality_rules(code: str, diff: str, config_text: str) -> list[dict[str, 
                 "line": "n/a",
                 "fix": "Resolve TODO items or convert to tracked task references.",
                 "snippet": "TODO",
+                "file_path": file_path,
             }
         )
 
@@ -25,6 +23,7 @@ def run_quality_rules(code: str, diff: str, config_text: str) -> list[dict[str, 
                 "line": "n/a",
                 "fix": "Catch specific exception types and log structured context.",
                 "snippet": "except:",
+                "file_path": file_path,
             }
         )
 
@@ -36,19 +35,12 @@ def run_quality_rules(code: str, diff: str, config_text: str) -> list[dict[str, 
                 "line": "n/a",
                 "fix": "Replace print statements with structured logging.",
                 "snippet": "print(...)",
+                "file_path": file_path,
             }
         )
 
-    return findings
 
-
-def run_security_rules(code: str, diff: str, config_text: str, repo_files: dict[str, str] | None = None) -> list[dict[str, Any]]:
-    text = "\n".join([code or "", diff or "", config_text or ""])
-    if repo_files:
-        text += "\n" + "\n".join(repo_files.values())
-
-    findings: list[dict[str, Any]] = []
-
+def _append_security_findings(text: str, file_path: str, findings: list[dict[str, Any]]) -> None:
     if re.search(r"SELECT\s+\*\s+FROM.+\{.+\}", text, flags=re.IGNORECASE):
         findings.append(
             {
@@ -57,6 +49,7 @@ def run_security_rules(code: str, diff: str, config_text: str, repo_files: dict[
                 "line": "n/a",
                 "fix": "Use parameterized queries and avoid string interpolation for SQL.",
                 "snippet": "SELECT ... {user_input}",
+                "file_path": file_path,
             }
         )
 
@@ -68,6 +61,7 @@ def run_security_rules(code: str, diff: str, config_text: str, repo_files: dict[
                 "line": "n/a",
                 "fix": "Remove eval usage and parse input with safe parsers.",
                 "snippet": "eval(...)",
+                "file_path": file_path,
             }
         )
 
@@ -79,6 +73,7 @@ def run_security_rules(code: str, diff: str, config_text: str, repo_files: dict[
                 "line": "n/a",
                 "fix": "Move secrets to environment variables or secret manager.",
                 "snippet": "secret='...'",
+                "file_path": file_path,
             }
         )
 
@@ -90,7 +85,28 @@ def run_security_rules(code: str, diff: str, config_text: str, repo_files: dict[
                 "line": "n/a",
                 "fix": "Disable debug mode in deployed environments.",
                 "snippet": "debug: true",
+                "file_path": file_path,
             }
         )
+
+
+def run_quality_rules(code: str, diff: str, config_text: str, repo_files: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    text = "\n".join([code or "", diff or "", config_text or ""])
+    findings: list[dict[str, Any]] = []
+
+    _append_quality_findings(text, "inline_input.py", findings)
+    for path, content in (repo_files or {}).items():
+        _append_quality_findings(content or "", path, findings)
+
+    return findings
+
+
+def run_security_rules(code: str, diff: str, config_text: str, repo_files: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    text = "\n".join([code or "", diff or "", config_text or ""])
+    findings: list[dict[str, Any]] = []
+
+    _append_security_findings(text, "inline_input.py", findings)
+    for path, content in (repo_files or {}).items():
+        _append_security_findings(content or "", path, findings)
 
     return findings

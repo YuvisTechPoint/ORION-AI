@@ -27,6 +27,10 @@ class BaseStateStore(ABC):
     def get(self, pipeline_id: str) -> PipelineState | None:
         raise NotImplementedError
 
+    @abstractmethod
+    def list_states(self) -> list[PipelineState]:
+        raise NotImplementedError
+
 
 class SQLiteStateStore(BaseStateStore):
     def __init__(self, database_url: str) -> None:
@@ -79,6 +83,16 @@ class SQLiteStateStore(BaseStateStore):
         data: dict[str, Any] = json.loads(row["payload"])
         return PipelineState.model_validate(data)
 
+    def list_states(self) -> list[PipelineState]:
+        cursor = self._conn.cursor()
+        cursor.execute("SELECT payload FROM pipelines")
+        rows = cursor.fetchall()
+        states: list[PipelineState] = []
+        for row in rows:
+            payload = json.loads(row["payload"])
+            states.append(PipelineState.model_validate(payload))
+        return states
+
 
 class PostgresStateStore(BaseStateStore):
     def __init__(self, database_url: str) -> None:
@@ -124,6 +138,19 @@ class PostgresStateStore(BaseStateStore):
         if isinstance(payload, str):
             payload = json.loads(payload)
         return PipelineState.model_validate(payload)
+
+    def list_states(self) -> list[PipelineState]:
+        with self._conn.cursor() as cursor:
+            cursor.execute("SELECT payload FROM pipelines")
+            rows = cursor.fetchall()
+
+        states: list[PipelineState] = []
+        for row in rows:
+            payload = row[0]
+            if isinstance(payload, str):
+                payload = json.loads(payload)
+            states.append(PipelineState.model_validate(payload))
+        return states
 
 
 def build_state_store(database_url: str) -> BaseStateStore:

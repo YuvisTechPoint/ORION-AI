@@ -1,0 +1,20 @@
+[Unit]
+Description=ORION AI Pipeline Monitor Daemon
+After=network.target orion-api.service
+Wants=orion-api.service
+
+[Service]
+Type=simple
+User=orion
+Group=orion
+WorkingDirectory=/opt/orion
+EnvironmentFile=/etc/orion/orion.env
+ExecStart=/opt/orion/venv/bin/python -m backend.daemon.monitor_daemon
+Restart=always
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=orion-monitor
+
+[Install]
+WantedBy=multi-user.target

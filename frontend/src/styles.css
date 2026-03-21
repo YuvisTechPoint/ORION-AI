@@ -235,6 +235,92 @@ pre {
   padding: 10px;
 }
 
+.auth-row {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.auth-in {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: #fffdf2;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.btn-github-login {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--ink);
+  color: #fff;
+  border-radius: 12px;
+  text-decoration: none;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  transition: transform 150ms ease, opacity 150ms ease;
+}
+
+.btn-github-login:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.user-avatar {
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  object-fit: cover;
+}
+
+.auth-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.auth-name {
+  font-weight: 700;
+}
+
+.auth-subtext {
+  font-size: 0.8rem;
+  color: #5c4b37;
+}
+
+.btn-logout {
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  text-decoration: none;
+  color: var(--ink);
+  font-weight: 600;
+  background: #fff;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.btn-logout:hover {
+  background: #fff7eb;
+  border-color: var(--accent);
+}
+
+.auth-banner {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(217, 143, 38, 0.4);
+  background: rgba(217, 143, 38, 0.1);
+  color: #7a4c0a;
+  font-weight: 600;
+}
+
 @keyframes rise {
   from {
     transform: translateY(10px);

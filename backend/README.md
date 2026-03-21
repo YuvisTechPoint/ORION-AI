@@ -86,6 +86,19 @@ Endpoints:
 - `GET /pipeline-status/{id}`
 - `POST /trigger-deployment`
 - `POST /analyze-logs`
+- `POST /api/v1/multimodal/analyze`
+- `POST /api/v1/multimodal/triage`
+
+### Multimodal Notes
+
+- `analyze` supports `agent_type` values:
+  - `payment`
+  - `log_analysis`
+  - `github_actions`
+  - `docker`
+  - `production_triage`
+- For `docker`, if high/critical findings exist and `repo_full_name` + `GITHUB_TOKEN` are present, ORION opens a remediation PR automatically.
+- For `triage`, if response contains `escalate_to_human=true`, ORION posts a Slack escalation when `SLACK_WEBHOOK_URL` is configured.
 
 ## 6. Sample Run
 

@@ -105,23 +105,45 @@ async def github_callback(
             logger.error("GitHub token exchange failed: %s", token_data)
             raise HTTPException(
                 status_code=400,
-                detail=f"Token exchange failed: {token_data.get('error_description', token_data['error'])}",
+                detail=f"GitHub authentication failed: {token_data.get('error_description', token_data['error'])} — "
+                       "please ensure your GitHub OAuth app credentials are correctly configured.",
+            )
+
+        if "access_token" not in token_data:
+            logger.error("GitHub response missing access_token: %s", token_data)
+            raise HTTPException(
+                status_code=400,
+                detail="GitHub did not return an access token — authentication cannot proceed.",
             )
 
         access_token = token_data["access_token"]
         token_scope = token_data.get("scope", "")
 
-        user_resp = await client.get(
-            "https://api.github.com/user",
-            headers={
-                "Authorization": f"token {access_token}",
-                "Accept": "application/vnd.github.v3+json",
-            },
-        )
-        user_resp.raise_for_status()
-        user_data = user_resp.json()
+        try:
+            user_resp = await client.get(
+                "https://api.github.com/user",
+                headers={
+                    "Authorization": f"token {access_token}",
+                    "Accept": "application/vnd.github.v3+json",
+                },
+            )
+            user_resp.raise_for_status()
+            user_data = user_resp.json()
+        except httpx.HTTPError as e:
+            logger.error("Failed to fetch GitHub user profile: %s", str(e))
+            raise HTTPException(
+                status_code=400,
+                detail="Failed to retrieve GitHub user profile — your token may have expired or permissions may be insufficient.",
+            )
 
     github_username = user_data.get("login")
+    if not github_username:
+        logger.error("GitHub user data missing login field: %s", user_data)
+        raise HTTPException(
+            status_code=400,
+            detail="GitHub user profile is incomplete — cannot determine username.",
+        )
+    
     github_avatar = user_data.get("avatar_url", "")
     github_name = user_data.get("name", github_username)
     github_email = user_data.get("email", "")

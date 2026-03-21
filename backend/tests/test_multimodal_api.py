@@ -1,26 +1,22 @@
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
-
 from agents.multimodal.dockerfile_agent import DockerfileAgent
 from agents.multimodal.github_log_agent import GitHubLogAgent
 from agents.multimodal.log_analysis_agent import LogAnalysisAgent
 from agents.multimodal.production_triage_agent import ProductionTriageAgent
-from main import app
 
 
-def test_multimodal_analyze_routes_to_log_agent(monkeypatch) -> None:
+def test_multimodal_analyze_routes_to_log_agent(authenticated_client, monkeypatch) -> None:
     def _fake_execute(self):
         return {"log_type": "build_error", "summary": "ok"}
 
     monkeypatch.setattr(LogAnalysisAgent, "execute", _fake_execute)
 
-    with TestClient(app) as client:
-        response = client.post(
-            "/api/v1/multimodal/analyze",
-            data={"agent_type": "log_analysis", "log_type": "build_error"},
-            files=[("files", ("build.log", b"error line", "text/plain"))],
-        )
+    response = authenticated_client.post(
+        "/api/v1/multimodal/analyze",
+        data={"agent_type": "log_analysis", "log_type": "build_error"},
+        files=[("files", ("build.log", b"error line", "text/plain"))],
+    )
 
     assert response.status_code == 200
     payload = response.json()
@@ -28,18 +24,17 @@ def test_multimodal_analyze_routes_to_log_agent(monkeypatch) -> None:
     assert payload["result"]["log_type"] == "build_error"
 
 
-def test_multimodal_analyze_routes_to_github_agent(monkeypatch) -> None:
+def test_multimodal_analyze_routes_to_github_agent(authenticated_client, monkeypatch) -> None:
     def _fake_execute(self):
         return {"workflow_name": "ci", "summary": "parsed"}
 
     monkeypatch.setattr(GitHubLogAgent, "execute", _fake_execute)
 
-    with TestClient(app) as client:
-        response = client.post(
-            "/api/v1/multimodal/analyze",
-            data={"agent_type": "github_actions"},
-            files=[("files", ("logs.zip", b"PK\x03\x04", "application/zip"))],
-        )
+    response = authenticated_client.post(
+        "/api/v1/multimodal/analyze",
+        data={"agent_type": "github_actions"},
+        files=[("files", ("logs.zip", b"PK\x03\x04", "application/zip"))],
+    )
 
     assert response.status_code == 200
     payload = response.json()
@@ -47,18 +42,17 @@ def test_multimodal_analyze_routes_to_github_agent(monkeypatch) -> None:
     assert payload["result"]["workflow_name"] == "ci"
 
 
-def test_multimodal_analyze_routes_to_docker_agent(monkeypatch) -> None:
+def test_multimodal_analyze_routes_to_docker_agent(authenticated_client, monkeypatch) -> None:
     def _fake_execute(self):
         return {"security_score": 88, "auto_pr_triggered": False}
 
     monkeypatch.setattr(DockerfileAgent, "execute", _fake_execute)
 
-    with TestClient(app) as client:
-        response = client.post(
-            "/api/v1/multimodal/analyze",
-            data={"agent_type": "docker"},
-            files=[("files", ("Dockerfile", b"FROM python:3.11", "text/plain"))],
-        )
+    response = authenticated_client.post(
+        "/api/v1/multimodal/analyze",
+        data={"agent_type": "docker"},
+        files=[("files", ("Dockerfile", b"FROM python:3.11", "text/plain"))],
+    )
 
     assert response.status_code == 200
     payload = response.json()
@@ -66,19 +60,18 @@ def test_multimodal_analyze_routes_to_docker_agent(monkeypatch) -> None:
     assert payload["result"]["security_score"] == 88
 
 
-def test_multimodal_analyze_unsupported_agent_type() -> None:
-    with TestClient(app) as client:
-        response = client.post(
-            "/api/v1/multimodal/analyze",
-            data={"agent_type": "unknown"},
-            files=[("files", ("a.txt", b"x", "text/plain"))],
-        )
+def test_multimodal_analyze_unsupported_agent_type(authenticated_client) -> None:
+    response = authenticated_client.post(
+        "/api/v1/multimodal/analyze",
+        data={"agent_type": "unknown"},
+        files=[("files", ("a.txt", b"x", "text/plain"))],
+    )
 
     assert response.status_code == 400
     assert "Unsupported agent_type" in response.json()["detail"]
 
 
-def test_multimodal_triage_escalation_sends_slack(monkeypatch) -> None:
+def test_multimodal_triage_escalation_sends_slack(authenticated_client, monkeypatch) -> None:
     def _fake_execute(self):
         return {
             "incident_severity": "P1",
@@ -99,11 +92,10 @@ def test_multimodal_triage_escalation_sends_slack(monkeypatch) -> None:
     monkeypatch.setattr(ProductionTriageAgent, "execute", _fake_execute)
     monkeypatch.setattr("api.multimodal._send_triage_slack_alert", lambda *_args, **_kwargs: True)
 
-    with TestClient(app) as client:
-        response = client.post(
-            "/api/v1/multimodal/triage",
-            files=[("files", ("incident.log", b"fatal", "text/plain"))],
-        )
+    response = authenticated_client.post(
+        "/api/v1/multimodal/triage",
+        files=[("files", ("incident.log", b"fatal", "text/plain"))],
+    )
 
     assert response.status_code == 200
     payload = response.json()

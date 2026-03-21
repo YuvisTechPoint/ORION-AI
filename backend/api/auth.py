@@ -86,6 +86,13 @@ async def github_callback(
     # Clean up session
     request.session.pop("oauth_state_token", None)
 
+    # Log credentials status for debugging
+    logger.info(f"Token exchange: client_id={settings.github_client_id[:10]}... secret_exists={bool(settings.github_client_secret)}")
+    
+    if not settings.github_client_secret:
+        logger.error("GITHUB_CLIENT_SECRET is empty!")
+        raise HTTPException(status_code=400, detail="GitHub client secret not configured on server")
+
     async with httpx.AsyncClient(timeout=15.0) as client:
         token_resp = await client.post(
             "https://github.com/login/oauth/access_token",

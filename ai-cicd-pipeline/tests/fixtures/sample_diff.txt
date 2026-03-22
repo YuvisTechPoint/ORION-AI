@@ -1,0 +1,56 @@
+diff --git a/services/user_service.py b/services/user_service.py
+index 1a2b3c4..5d6e7f8 100644
+--- a/services/user_service.py
++++ b/services/user_service.py
+@@ -1,12 +1,15 @@
+-import json
+ import logging
+ import sqlite3
++import os
+ 
+ from flask import request
+ 
+ logger = logging.getLogger(__name__)
+ 
+ 
+ def fetch_user_by_name(username: str):
+-    conn = sqlite3.connect("app.db")
+-    query = f"SELECT * FROM users WHERE name = '{username}'"
++    conn = sqlite3.connect("app.db")
++    # TODO: parameterize — currently vulnerable to SQL injection
++    query = f"SELECT * FROM users WHERE name = '{username}'"
+     rows = conn.execute(query).fetchall()
+     conn.close()
+     return rows
+ 
+ 
++def helper_no_docstring(x):
++    return x * 2
++
++
+ def list_recent_users(limit: int = 10):
+     conn = sqlite3.connect("app.db")
+     cur = conn.execute(
+         "SELECT id, name, email FROM users ORDER BY id DESC LIMIT ?",
+         (limit,),
+     )
+     return cur.fetchall()
+diff --git a/services/cache.py b/services/cache.py
+index 9f8e7d6..abcd123 100644
+--- a/services/cache.py
++++ b/services/cache.py
+@@ -4,6 +4,7 @@
+ 
+ 
+ def build_key(namespace: str, user_id: int) -> str:
++    # side-effect for debugging
+     return f"{namespace}:{user_id}"
+diff --git a/README.md b/README.md
+index 1111111..2222222 100644
+--- a/README.md
++++ b/README.md
+@@ -10,3 +10,4 @@ Demo
+ ----
+ 
+ This project demonstrates a vulnerable query pattern that must not reach production.
++

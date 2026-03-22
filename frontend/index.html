@@ -7,10 +7,599 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
+    <div class="top-bar" aria-hidden="true"></div>
+    <div class="bg-system">
+      <div class="bg-noise"></div>
+      <div class="bg-glow"></div>
+      <div class="bg-dots"></div>
+    </div>
     <div id="root"></div>
+    <!-- Git Log Analyzer Modal -->
+    <div id="modal-git-logs" class="modal-overlay" style="display:none">
+      <div class="modal-container">
+        <div class="modal-header">
+          <div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22" fill="none">
+                <rect x="3" y="4" width="18" height="16" rx="3" ry="3" stroke="#d4580a" stroke-width="1.6" />
+                <path d="M3 8h18" stroke="#d4580a" stroke-width="1.6" />
+                <circle cx="7" cy="6" r="0.9" fill="#d4580a" />
+                <circle cx="11" cy="6" r="0.9" fill="#d4580a" />
+                <circle cx="15" cy="6" r="0.9" fill="#d4580a" />
+              </svg>
+              <div>
+                <div class="issue-title">Git Log Analyzer</div>
+                <div class="issue-meta">Drop logs, screenshots, or ZIP files — AI finds every error</div>
+              </div>
+            </div>
+          </div>
+          <button class="modal-close" type="button" onclick="closeModal('modal-git-logs')">✕</button>
+        </div>
+        <div class="modal-body">
+          <div id="git-dropzone" class="dropzone">
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="40" height="40" fill="none" style="margin-bottom:10px;color:var(--orange-primary);">
+              <path d="M6 16.5a4 4 0 0 1 0-8 5 5 0 0 1 9.7-1.6A3.5 3.5 0 0 1 18.5 16.5H14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M12 8v9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+              <path d="M9.5 12 12 9.5 14.5 12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <div style="font-size:14px;font-weight:500;color:var(--text-primary);margin-bottom:4px;">
+              Drop log files, screenshots, or GitHub Actions ZIP here
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);">
+              Supports: .log .txt .zip .png .jpg .csv
+            </div>
+            <input type="file" id="git-file-input" multiple accept=".log,.txt,.zip,.png,.jpg,.jpeg,.csv" style="display:none" />
+          </div>
+          <div id="git-file-list" class="file-list"></div>
+          <textarea
+            id="git-text-input"
+            class="log-textarea"
+            rows="8"
+            placeholder="Or paste your log output directly here...&#10;&#10;Example:&#10;2026-03-22T10:12:06Z ERROR timeout connecting to db&#10;2026-03-22T10:12:07Z FATAL build failed: missing module 'requests'"
+          ></textarea>
+          <div id="git-error" class="modal-error" style="display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" onclick="closeModal('modal-git-logs')">Cancel</button>
+          <button id="git-analyze-btn" type="button" class="btn-primary btn-full" onclick="runGitAnalysis()">
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none">
+              <circle cx="12" cy="12" r="9" stroke="#fcefe3" stroke-width="1.4" />
+              <path d="M9 10.5a3 3 0 0 1 6 0c0 2-2 3-2 3.5" stroke="#fcefe3" stroke-width="1.4" stroke-linecap="round" />
+              <circle cx="12" cy="17" r="0.8" fill="#fcefe3" />
+            </svg>
+            <span>Analyze with AI</span>
+          </button>
+        </div>
+        <div id="git-results" class="results-container" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- Payment Analyzer Modal -->
+    <div id="modal-payment" class="modal-overlay" style="display:none">
+      <div class="modal-container">
+        <div class="modal-header">
+          <div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22" fill="none">
+                <rect x="3" y="5" width="18" height="14" rx="2" ry="2" stroke="#2b6cb0" stroke-width="1.6" />
+                <path d="M3 9h18" stroke="#2b6cb0" stroke-width="1.6" />
+              </svg>
+              <div>
+                <div class="issue-title">Payment Analyzer</div>
+                <div class="issue-meta">Drop CSVs, dashboards, or webhook payloads — AI finds every payment issue</div>
+              </div>
+            </div>
+          </div>
+          <button class="modal-close" type="button" onclick="closeModal('modal-payment')">✕</button>
+        </div>
+        <div class="modal-body">
+          <div id="payment-dropzone" class="dropzone">
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="40" height="40" fill="none" style="margin-bottom:10px;color:var(--orange-primary);">
+              <path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2H4Zm0 4h16v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" />
+              <path d="M7 16h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+            </svg>
+            <div style="font-size:14px;font-weight:500;color:var(--text-primary);margin-bottom:4px;">
+              Drop transaction CSVs, PDFs, screenshots, or webhook JSON here
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);">
+              Supports: .csv .png .jpg .jpeg .pdf .json
+            </div>
+            <input type="file" id="payment-file-input" multiple accept=".csv,.png,.jpg,.jpeg,.pdf,.json" style="display:none" />
+          </div>
+          <div id="payment-file-list" class="file-list"></div>
+          <textarea
+            id="payment-text-input"
+            class="log-textarea"
+            rows="8"
+            placeholder="Or paste transaction data, webhook payload, or error output here..."
+          ></textarea>
+          <div id="payment-error" class="modal-error" style="display:none"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" onclick="closeModal('modal-payment')">Cancel</button>
+          <button id="payment-analyze-btn" type="button" class="btn-primary btn-full" onclick="runPaymentAnalysis()">
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none">
+              <path d="M5 7a3 3 0 0 1 3-3h8.5a2.5 2.5 0 0 1 0 5H8" stroke="#fcefe3" stroke-width="1.4" stroke-linecap="round" />
+              <path d="M8 6v12" stroke="#fcefe3" stroke-width="1.4" stroke-linecap="round" />
+              <path d="M5 17a3 3 0 0 0 3 3h8" stroke="#fcefe3" stroke-width="1.4" stroke-linecap="round" />
+            </svg>
+            <span>Analyze with AI</span>
+          </button>
+        </div>
+        <div id="payment-results" class="results-container" style="display:none"></div>
+      </div>
+    </div>
+
+    <script>
+      window.__ORION_API_BASE__ = window.__ORION_API_BASE__ || "http://localhost:8000";
+    </script>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      function orionApiBase() {
+        return window.__ORION_API_BASE__ || "http://localhost:8000";
+      }
+
+      function openModal(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.style.display = "flex";
+        document.body.style.overflow = "hidden";
+      }
+
+      function closeModal(id) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.style.display = "none";
+        document.body.style.overflow = "";
+      }
+
+      window.openModal = openModal;
+      window.closeModal = closeModal;
+
+      function setupDropzone(dropzoneId, fileInputId, fileListId) {
+        const dropzone = document.getElementById(dropzoneId);
+        const input = document.getElementById(fileInputId);
+        const listId = fileListId;
+        if (!dropzone || !input) return;
+
+        dropzone.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          dropzone.classList.add("drag-over");
+        });
+
+        dropzone.addEventListener("dragleave", () => {
+          dropzone.classList.remove("drag-over");
+        });
+
+        dropzone.addEventListener("drop", (e) => {
+          e.preventDefault();
+          dropzone.classList.remove("drag-over");
+          const files = e.dataTransfer.files;
+          if (!files || !files.length) return;
+          const dt = new DataTransfer();
+          Array.from(files).forEach((f) => dt.items.add(f));
+          input.files = dt.files;
+          renderFileList(input.files, listId);
+        });
+
+        dropzone.addEventListener("click", () => input.click());
+
+        input.addEventListener("change", () => {
+          renderFileList(input.files, listId);
+        });
+      }
+
+      function renderFileList(files, listId) {
+        const container = document.getElementById(listId);
+        if (!container) return;
+        container.innerHTML = "";
+        if (!files || !files.length) return;
+
+        Array.from(files).forEach((file) => {
+          const item = document.createElement("div");
+          item.className = "file-item";
+          const name = file.name || "unnamed";
+          const lower = name.toLowerCase();
+          let emoji = "📄";
+          if (lower.endsWith(".zip")) emoji = "🗜️";
+          else if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")) emoji = "🖼️";
+          else if (lower.endsWith(".csv")) emoji = "📊";
+
+          let sizeLabel = "";
+          const size = file.size || 0;
+          if (size >= 1024 * 1024) {
+            sizeLabel = (size / (1024 * 1024)).toFixed(1) + " MB";
+          } else {
+            sizeLabel = (size / 1024).toFixed(1) + " KB";
+          }
+
+          const displayName = name.length > 40 ? name.slice(0, 18) + "…" + name.slice(-18) : name;
+          item.innerHTML = `<span>${emoji}</span><span>${displayName}</span><span style="margin-left:auto;font-size:10px;color:var(--text-muted);">${sizeLabel}</span>`;
+          container.appendChild(item);
+        });
+      }
+
+      async function runGitAnalysis() {
+        const btn = document.getElementById("git-analyze-btn");
+        const input = document.getElementById("git-file-input");
+        const textArea = document.getElementById("git-text-input");
+        const errorEl = document.getElementById("git-error");
+        if (!btn || !input || !textArea || !errorEl) return;
+
+        errorEl.style.display = "none";
+        errorEl.textContent = "";
+
+        const files = input.files || [];
+        const text = textArea.value.trim();
+        if ((!files || !files.length) && !text) {
+          errorEl.textContent = "Provide at least one log file or paste log text.";
+          errorEl.style.display = "block";
+          return;
+        }
+
+        btn.disabled = true;
+        const originalLabel = btn.textContent;
+        btn.textContent = "Analyzing...";
+
+        try {
+          const formData = new FormData();
+          Array.from(files).forEach((file) => formData.append("files", file));
+          if (text) formData.append("text_input", text);
+
+          const resp = await fetch(orionApiBase() + "/api/v1/multimodal/git-logs", {
+            method: "POST",
+            credentials: "include",
+            body: formData,
+          });
+
+          if (resp.status === 401) {
+            errorEl.textContent = "Please login with GitHub first";
+            errorEl.style.display = "block";
+            return;
+          }
+
+          if (!resp.ok) {
+            const textResp = await resp.text();
+            throw new Error(textResp || `Request failed with ${resp.status}`);
+          }
+
+          const data = await resp.json();
+          if (!data || !data.result) {
+            throw new Error("Unexpected response from server");
+          }
+          renderGitResults(data.result);
+        } catch (err) {
+          errorEl.textContent = err.message || "Analysis failed";
+          errorEl.style.display = "block";
+        } finally {
+          btn.disabled = false;
+          btn.textContent = originalLabel;
+        }
+      }
+
+      function renderGitResults(result) {
+        const container = document.getElementById("git-results");
+        if (!container) return;
+        container.style.display = "block";
+
+        const severity = String(result.severity || "low").toLowerCase();
+        const issues = Array.isArray(result.issues) ? result.issues : [];
+        const totalIssues =
+          typeof result.total_issues_found === "number" ? result.total_issues_found : issues.length;
+
+        let html = "";
+        html += `<div class="result-header">`;
+        html += `<div><div class="issue-title">Git Log Analysis</div><div class="issue-meta">${
+          result.summary || "Multimodal analysis of uploaded logs"
+        }</div></div>`;
+        html += `<div style="display:flex;align-items:center;gap:8px;">`;
+        html += `<span class="severity-badge ${severity}">${severity.toUpperCase()}</span>`;
+        html += `<span style="font-size:11px;color:var(--text-muted);">${totalIssues} issues</span>`;
+        html += `</div></div>`;
+
+        issues.forEach((issue, idx) => {
+          const category = issue.category || "other";
+          const issueSeverity = String(issue.severity || severity).toLowerCase();
+          const commands = Array.isArray(issue.fix_commands) ? issue.fix_commands : [];
+          const blockId = `git-fix-${idx}`;
+
+          html += `<div class="issue-card">`;
+          html += `<div class="issue-title">${issue.title || `Issue #${idx + 1}`}</div>`;
+          html += `<div class="issue-meta">${category} · <span class="severity-badge ${issueSeverity}">${issueSeverity.toUpperCase()}</span></div>`;
+          html += `<div style="font-size:12px;color:var(--text-primary);margin-bottom:8px;">${
+            issue.description || "No description provided."
+          }</div>`;
+          if (issue.root_cause) {
+            html += `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;"><strong>Root cause:</strong> ${issue.root_cause}</div>`;
+          }
+          if (commands.length) {
+            const body = commands.map((c) => `$ ${c}`).join("<br>");
+            html += `<div class="fix-block" id="${blockId}">${body}</div>`;
+            html += `<button type="button" class="btn-copy" data-target="${blockId}">Copy fix commands</button>`;
+          }
+          html += `</div>`;
+        });
+
+        if (Array.isArray(result.immediate_actions) && result.immediate_actions.length) {
+          html += `<div class="issue-card"><div class="issue-title">Immediate actions</div><ol style="padding-left:18px;font-size:12px;color:var(--text-primary);">`;
+          result.immediate_actions.forEach((a) => {
+            html += `<li>${a}</li>`;
+          });
+          html += `</ol></div>`;
+        }
+
+        if (result.server_timeout_analysis && result.server_timeout_analysis.detected) {
+          const s = result.server_timeout_analysis;
+          html += `<div class="issue-card"><div class="issue-title">Server timeout analysis</div>`;
+          html += `<div class="issue-meta">Endpoints: ${(s.endpoints_affected || []).join(", ") || "n/a"}</div>`;
+          if (s.likely_cause) {
+            html += `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;"><strong>Likely cause:</strong> ${s.likely_cause}</div>`;
+          }
+          if (s.fix) {
+            html += `<div style="font-size:12px;color:var(--text-secondary);"><strong>Fix:</strong> ${s.fix}</div>`;
+          }
+          html += `</div>`;
+        }
+
+        if (result.build_error_analysis && result.build_error_analysis.detected) {
+          const b = result.build_error_analysis;
+          html += `<div class="issue-card"><div class="issue-title">Build error analysis</div>`;
+          if (b.failed_step) {
+            html += `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;"><strong>Failed step:</strong> ${b.failed_step}</div>`;
+          }
+          if (b.exact_fix_command) {
+            html += `<div class="fix-block">$ ${b.exact_fix_command}</div>`;
+          }
+          html += `</div>`;
+        }
+
+        html += `<div class="issue-card"><button type="button" class="btn-secondary" id="git-export-btn">Export JSON</button></div>`;
+
+        container.innerHTML = html;
+        window._lastGitResult = result;
+
+        container.querySelectorAll(".btn-copy").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const targetId = btn.getAttribute("data-target");
+            const el = targetId ? document.getElementById(targetId) : null;
+            if (!el) return;
+            const text = el.innerText || "";
+            if (navigator.clipboard) {
+              navigator.clipboard.writeText(text).catch(() => {});
+            }
+          });
+        });
+
+        const exportBtn = document.getElementById("git-export-btn");
+        if (exportBtn) {
+          exportBtn.addEventListener("click", () => exportResults(window._lastGitResult, "git-log-analysis.json"));
+        }
+      }
+
+      async function runPaymentAnalysis() {
+        const btn = document.getElementById("payment-analyze-btn");
+        const input = document.getElementById("payment-file-input");
+        const textArea = document.getElementById("payment-text-input");
+        const errorEl = document.getElementById("payment-error");
+        if (!btn || !input || !textArea || !errorEl) return;
+
+        errorEl.style.display = "none";
+        errorEl.textContent = "";
+
+        const files = input.files || [];
+        const text = textArea.value.trim();
+        if ((!files || !files.length) && !text) {
+          errorEl.textContent = "Provide at least one file or paste payment data.";
+          errorEl.style.display = "block";
+          return;
+        }
+
+        btn.disabled = true;
+        const originalLabel = btn.textContent;
+        btn.textContent = "Analyzing...";
+
+        try {
+          const formData = new FormData();
+          Array.from(files).forEach((file) => formData.append("files", file));
+          if (text) formData.append("text_input", text);
+
+          const resp = await fetch(orionApiBase() + "/api/v1/multimodal/payment", {
+            method: "POST",
+            credentials: "include",
+            body: formData,
+          });
+
+          if (resp.status === 401) {
+            errorEl.textContent = "Please login with GitHub first";
+            errorEl.style.display = "block";
+            return;
+          }
+
+          if (!resp.ok) {
+            const textResp = await resp.text();
+            throw new Error(textResp || `Request failed with ${resp.status}`);
+          }
+
+          const data = await resp.json();
+          if (!data || !data.result) {
+            throw new Error("Unexpected response from server");
+          }
+          renderPaymentResults(data.result);
+        } catch (err) {
+          errorEl.textContent = err.message || "Analysis failed";
+          errorEl.style.display = "block";
+        } finally {
+          btn.disabled = false;
+          btn.textContent = originalLabel;
+        }
+      }
+
+      function renderPaymentResults(result) {
+        const container = document.getElementById("payment-results");
+        if (!container) return;
+        container.style.display = "block";
+
+        const severity = String(result.severity || "low").toLowerCase();
+        const successRate = typeof result.success_rate_percent === "number" ? result.success_rate_percent : 0;
+        const reconciliation = result.reconciliation_summary || {};
+        const reconStatus = String(reconciliation.reconciliation_status || "balanced").toLowerCase();
+
+        let html = "";
+        html += `<div class="result-header">`;
+        html += `<div><div class="issue-title">Payment System Analysis</div><div class="issue-meta">${
+          result.summary || "Multimodal analysis of uploaded payment data"
+        }</div></div>`;
+        html += `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">`;
+        html += `<span class="severity-badge ${severity}">${severity.toUpperCase()}</span>`;
+        html += `<span class="payment-metric-main">${successRate.toFixed(1)}%</span>`;
+        html += `</div></div>`;
+
+        html += `<div class="issue-card">`;
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">`;
+        html += `<div style="font-size:12px;color:var(--text-secondary);">Total analyzed: ${
+          result.total_transactions_analyzed ?? 0
+        } · Failed amount: ${result.total_failed_amount || "0"}</div>`;
+        html += `<span class="reconciliation-badge ${
+          reconStatus === "balanced" ? "balanced" : reconStatus === "discrepancy_found" ? "discrepancy" : "unable"
+        }">${reconStatus.replace("_", " ")}</span>`;
+        html += `</div>`;
+        if (reconciliation && reconciliation.currency) {
+          html += `<div class="issue-meta">Expected: ${reconciliation.total_amount_expected || "0"} · Received: ${
+            reconciliation.total_amount_received || "0"
+          } · Discrepancy: ${reconciliation.discrepancy || "0"} ${reconciliation.currency}</div>`;
+        }
+        html += `</div>`;
+
+        const failed = Array.isArray(result.failed_transactions) ? result.failed_transactions : [];
+        if (failed.length) {
+          failed.forEach((tx, idx) => {
+            html += `<details class="issue-card" ${idx === 0 ? "open" : ""}>`;
+            html += `<summary class="issue-title">${tx.transaction_id || "Unknown ID"} · ${
+              tx.amount || "0"
+            } ${tx.currency || ""}</summary>`;
+            html += `<div class="issue-meta">Gateway: ${tx.gateway || "n/a"} · Error: ${
+              tx.error_code || "n/a"
+            }</div>`;
+            html += `<div style="font-size:12px;color:var(--text-primary);margin-bottom:6px;">${
+              tx.error_message || "No error message provided."
+            }</div>`;
+            if (tx.recommended_action) {
+              html += `<div style="font-size:12px;color:var(--text-secondary);"><strong>Recommended:</strong> ${tx.recommended_action}</div>`;
+            }
+            html += `</details>`;
+          });
+        }
+
+        const patterns = Array.isArray(result.error_patterns) ? result.error_patterns.slice() : [];
+        patterns.sort((a, b) => (b.frequency || 0) - (a.frequency || 0));
+        if (patterns.length) {
+          html += `<div class="issue-card"><div class="issue-title">Error patterns</div><ul style="padding-left:18px;font-size:12px;color:var(--text-primary);">`;
+          patterns.forEach((p) => {
+            html += `<li><strong>${p.pattern || "Pattern"}</strong> — ${p.frequency || 0} occurrences, affected: ${
+              p.affected_transactions || 0
+            } (${p.total_amount_affected || "0"}); fix: ${p.fix || "n/a"}</li>`;
+          });
+          html += `</ul></div>`;
+        }
+
+        const fraud = Array.isArray(result.fraud_indicators) ? result.fraud_indicators : [];
+        if (fraud.length) {
+          html += `<div class="issue-card"><div class="issue-title">Fraud indicators</div><ul style="padding-left:18px;font-size:12px;color:var(--text-primary);">`;
+          fraud.forEach((f) => {
+            const risk = String(f.risk_level || "medium").toLowerCase();
+            html += `<li><span class="severity-badge ${risk}">${risk.toUpperCase()}</span> ${
+              f.indicator || "Indicator"
+            } (transactions: ${(f.affected_transactions || []).join(", ")}) — ${f.recommended_action || "review"}</li>`;
+          });
+          html += `</ul></div>`;
+        }
+
+        if (Array.isArray(result.immediate_actions) && result.immediate_actions.length) {
+          html += `<div class="issue-card"><div class="issue-title">Immediate actions</div><ol style="padding-left:18px;font-size:12px;color:var(--text-primary);">`;
+          result.immediate_actions.forEach((a) => {
+            html += `<li>${a}</li>`;
+          });
+          html += `</ol></div>`;
+        }
+
+        html += `<div class="issue-card"><button type="button" class="btn-secondary" id="payment-export-btn">Export JSON</button></div>`;
+
+        container.innerHTML = html;
+        window._lastPaymentResult = result;
+
+        const exportBtn = document.getElementById("payment-export-btn");
+        if (exportBtn) {
+          exportBtn.addEventListener("click", () =>
+            exportResults(window._lastPaymentResult, "payment-analysis.json"),
+          );
+        }
+      }
+
+      function exportResults(data, filename) {
+        if (!data) return;
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      document.querySelectorAll(".modal-overlay").forEach((overlay) => {
+        overlay.addEventListener("click", (e) => {
+          if (e.target === overlay) {
+            closeModal(overlay.id);
+          }
+        });
+      });
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          document.querySelectorAll(".modal-overlay").forEach((m) => closeModal(m.id));
+        }
+      });
+
+      setupDropzone("git-dropzone", "git-file-input", "git-file-list");
+      setupDropzone("payment-dropzone", "payment-file-input", "payment-file-list");
+
+      (function initShellPresentation() {
+        function staggerCards() {
+          document.querySelectorAll(".panel-card").forEach((el, i) => {
+            window.setTimeout(() => el.classList.add("card-visible"), i * 90);
+          });
+        }
+        function tryStagger(attempts) {
+          if (document.querySelectorAll(".panel-card").length > 0) {
+            staggerCards();
+            return;
+          }
+          if (attempts < 200) {
+            requestAnimationFrame(() => tryStagger(attempts + 1));
+          }
+        }
+        document.addEventListener("DOMContentLoaded", () => tryStagger(0));
+
+        document.addEventListener("mousedown", (e) => {
+          const t = e.target.closest("button, a.btn-github-login");
+          if (!t) return;
+          const r = document.createElement("span");
+          r.className = "ripple";
+          const rect = t.getBoundingClientRect();
+          r.style.left = e.clientX - rect.left - 30 + "px";
+          r.style.top = e.clientY - rect.top - 30 + "px";
+          t.appendChild(r);
+          window.setTimeout(() => r.remove(), 500);
+        });
+      })();
+    </script>
   </body>
 </html>

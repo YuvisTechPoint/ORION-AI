@@ -4,6 +4,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from api.routes import router
 from api.multimodal import router as multimodal_router
+from app.api.routes.multimodal import router as multimodal_analysis_router
 from api import auth as auth_routes
 from core.config import get_settings
 from core.logging_config import configure_logging
@@ -16,13 +17,6 @@ def create_app() -> FastAPI:
         title="Multi-Agent Multi-Modal DevOps Automation Platform",
         version="0.1.0",
         description="Prototype platform for AI-assisted DevOps workflow automation.",
-    )
-    app.add_middleware(
-        SessionMiddleware,
-        secret_key=settings.session_secret_key,
-        max_age=settings.oauth_token_expiry_hours * 3600,
-        same_site="none",
-        https_only=False,
     )
     app.add_middleware(
         CORSMiddleware,
@@ -38,9 +32,22 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # Add session middleware after CORS so CORS preflight/headers are applied
+    # before session handling. This avoids subtle browser-side failures when
+    # requests include credentials (cookies) on cross-origin requests.
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.session_secret_key,
+        max_age=settings.oauth_token_expiry_hours * 3600,
+        same_site="lax",
+        https_only=False,
+    )
     app.include_router(router)
     app.include_router(auth_routes.router, prefix="/api/v1")
+    # Existing multimodal endpoints used by the core pipeline agents.
     app.include_router(multimodal_router, prefix="/api/v1/multimodal", tags=["multimodal"])
+    # New dedicated multimodal analysis endpoints (git logs, payments).
+    app.include_router(multimodal_analysis_router, prefix="/api/v1")
     return app
 
 

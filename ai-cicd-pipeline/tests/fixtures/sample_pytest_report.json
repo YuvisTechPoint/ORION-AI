@@ -1,0 +1,104 @@
+{
+  "created": 1711111111.0,
+  "duration": 12.34,
+  "exitcode": 1,
+  "root": "/tmp/demo",
+  "environment": {},
+  "summary": {
+    "total": 7,
+    "collected": 7,
+    "passed": 5,
+    "failed": 2,
+    "error": 0,
+    "skipped": 0,
+    "deselected": 0,
+    "xfailed": 0,
+    "xpassed": 0,
+    "warnings": 1
+  },
+  "collectors": [],
+  "tests": [
+    {
+      "nodeid": "tests/test_math.py::test_add",
+      "lineno": 1,
+      "outcome": "passed",
+      "duration": 0.01,
+      "setup": { "duration": 0.001, "outcome": "passed" },
+      "call": { "duration": 0.008, "outcome": "passed" },
+      "teardown": { "duration": 0.001, "outcome": "passed" }
+    },
+    {
+      "nodeid": "tests/test_math.py::test_sub",
+      "lineno": 5,
+      "outcome": "passed",
+      "duration": 0.01,
+      "setup": { "duration": 0.001, "outcome": "passed" },
+      "call": { "duration": 0.008, "outcome": "passed" },
+      "teardown": { "duration": 0.001, "outcome": "passed" }
+    },
+    {
+      "nodeid": "tests/test_api.py::test_health",
+      "lineno": 2,
+      "outcome": "passed",
+      "duration": 0.05,
+      "setup": { "duration": 0.002, "outcome": "passed" },
+      "call": { "duration": 0.045, "outcome": "passed" },
+      "teardown": { "duration": 0.003, "outcome": "passed" }
+    },
+    {
+      "nodeid": "tests/test_api.py::test_users_list",
+      "lineno": 8,
+      "outcome": "passed",
+      "duration": 0.06,
+      "setup": { "duration": 0.002, "outcome": "passed" },
+      "call": { "duration": 0.052, "outcome": "passed" },
+      "teardown": { "duration": 0.006, "outcome": "passed" }
+    },
+    {
+      "nodeid": "tests/test_api.py::test_users_create",
+      "lineno": 15,
+      "outcome": "passed",
+      "duration": 0.07,
+      "setup": { "duration": 0.002, "outcome": "passed" },
+      "call": { "duration": 0.062, "outcome": "passed" },
+      "teardown": { "duration": 0.006, "outcome": "passed" }
+    },
+    {
+      "nodeid": "tests/test_db.py::test_query_users",
+      "lineno": 3,
+      "outcome": "failed",
+      "duration": 0.02,
+      "setup": { "duration": 0.001, "outcome": "passed" },
+      "call": {
+        "duration": 0.017,
+        "outcome": "failed",
+        "crash": {
+          "path": "/tmp/demo/tests/test_db.py",
+          "lineno": 10,
+          "message": "AssertionError: expected 3 rows"
+        }
+      },
+      "teardown": { "duration": 0.002, "outcome": "passed" }
+    },
+    {
+      "nodeid": "tests/test_db.py::test_transaction_rollback",
+      "lineno": 20,
+      "outcome": "failed",
+      "duration": 0.03,
+      "setup": { "duration": 0.002, "outcome": "passed" },
+      "call": {
+        "duration": 0.025,
+        "outcome": "failed",
+        "longrepr": "sqlite3.OperationalError: database is locked"
+      },
+      "teardown": { "duration": 0.003, "outcome": "passed" }
+    }
+  ],
+  "warnings": [
+    {
+      "message": "DeprecationWarning: old API",
+      "filename": "services/legacy.py",
+      "lineno": 12
+    }
+  ]
+}

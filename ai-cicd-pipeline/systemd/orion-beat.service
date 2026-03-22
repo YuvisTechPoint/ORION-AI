@@ -1,0 +1,18 @@
+[Unit]
+Description=ORION Celery Beat
+After=network.target redis.service
+
+[Service]
+Type=exec
+User=orion
+WorkingDirectory=/opt/orion
+EnvironmentFile=/etc/orion/orion.env
+ExecStart=/opt/orion/venv/bin/celery -A app.tasks.pipeline_tasks.celery_app beat -l info
+Restart=on-failure
+RestartSec=10s
+StandardOutput=journal
+SyslogIdentifier=orion-beat
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

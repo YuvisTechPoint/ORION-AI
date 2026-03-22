@@ -1,0 +1,1764 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ORION — DevOps Agent Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --cream: #f5f0e8;
+        --cream-dark: #ede6d6;
+        --cream-mid: #e8dfc8;
+        --sand: #d4c9a8;
+        --sand-dark: #b8aa88;
+        --orange-primary: #d4580a;
+        --orange-bright: #e8660f;
+        --orange-deep: #b8470a;
+        --orange-glow: rgba(212, 88, 10, 0.15);
+        --orange-glow-strong: rgba(212, 88, 10, 0.35);
+        --text-primary: #1a1208;
+        --text-secondary: #4a3b28;
+        --text-muted: #7a6a52;
+        --text-inverse: #f5f0e8;
+        --surface-card: rgba(255, 252, 245, 0.85);
+        --surface-inset: rgba(200, 190, 170, 0.25);
+        --border-subtle: rgba(180, 150, 100, 0.2);
+        --border-medium: rgba(180, 150, 100, 0.4);
+        --border-strong: rgba(180, 150, 100, 0.7);
+        --font-display: "DM Serif Display", Georgia, serif;
+        --font-mono: "JetBrains Mono", "Fira Code", monospace;
+        --font-ui: "DM Sans", system-ui, sans-serif;
+        --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+        --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--cream);
+        color: var(--text-primary);
+        font-family: var(--font-ui);
+        position: relative;
+        overflow-x: hidden;
+      }
+      .bg-system {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        overflow: hidden;
+      }
+      .bg-system .noise {
+        position: absolute;
+        inset: 0;
+        opacity: 0.04;
+        filter: url(#noiseFilter);
+      }
+      .bg-system .glow {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          ellipse 80% 50% at 20% 10%,
+          rgba(212, 88, 10, 0.08),
+          transparent 60%
+        );
+      }
+      .bg-system .dots {
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(
+          circle,
+          rgba(180, 150, 100, 0.15) 1px,
+          transparent 1px
+        );
+        background-size: 32px 32px;
+      }
+      .shell {
+        position: relative;
+        z-index: 1;
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: 24px 32px 48px;
+      }
+      header.top {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 16px;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .logo {
+        width: 44px;
+        height: 44px;
+      }
+      h1.title {
+        margin: 0;
+        font-family: var(--font-display);
+        font-size: 32px;
+        letter-spacing: -0.02em;
+      }
+      .right-cluster {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border-medium);
+        background: var(--surface-card);
+        font-size: 12px;
+        font-family: var(--font-mono);
+        position: relative;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--sand-dark);
+        position: relative;
+      }
+      .dot.ok {
+        background: #52a878;
+      }
+      .dot.warn {
+        background: var(--orange-primary);
+      }
+      .dot.live {
+        background: var(--orange-bright);
+      }
+      .pill .dot::after {
+        content: "";
+        position: absolute;
+        inset: -6px;
+        border-radius: 999px;
+        box-shadow: 0 0 0 0 rgba(82, 168, 120, 0.35);
+        animation: pulse-ring 1.8s infinite;
+      }
+      .pill.ws-live .dot::after,
+      .pill.mon-live .dot::after {
+        box-shadow: 0 0 0 0 rgba(212, 88, 10, 0.35);
+      }
+      @keyframes pulse-ring {
+        0% {
+          transform: scale(0.9);
+          opacity: 0.55;
+        }
+        70% {
+          transform: scale(1.35);
+          opacity: 0;
+        }
+        100% {
+          opacity: 0;
+        }
+      }
+      .btn-dark {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border-radius: 10px;
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        background: var(--text-primary);
+        color: var(--cream);
+        text-decoration: none;
+        font-weight: 500;
+        font-size: 13px;
+      }
+      .userbox {
+        display: none;
+        align-items: center;
+        gap: 10px;
+      }
+      .userbox img {
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        border: 2px solid var(--orange-primary);
+      }
+      .mono {
+        font-family: var(--font-mono);
+        font-size: 12px;
+      }
+      #auth-banner {
+        display: none;
+        margin: 12px 0 16px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(201, 122, 16, 0.35);
+        background: rgba(201, 122, 16, 0.12);
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+      #auth-banner a {
+        color: var(--orange-deep);
+        font-weight: 600;
+      }
+      .modal-triggers {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
+      }
+      .btn-modal-trigger {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        border: 1px solid var(--border-medium);
+        background: var(--surface-card);
+        cursor: pointer;
+        transition: border-color 200ms var(--ease-smooth), background 200ms var(--ease-smooth),
+          box-shadow 200ms var(--ease-smooth), transform 120ms var(--ease-smooth);
+      }
+      .btn-modal-trigger:hover {
+        border-color: var(--orange-primary);
+        background: linear-gradient(180deg, rgba(255, 252, 245, 0.95), var(--orange-glow));
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+      }
+      .btn-modal-trigger:active {
+        transform: scale(0.99);
+      }
+      .dashboard {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 20px;
+      }
+      @media (max-width: 1200px) {
+        .dashboard {
+          grid-template-columns: repeat(8, 1fr);
+        }
+      }
+      @media (max-width: 900px) {
+        .dashboard {
+          grid-template-columns: 1fr;
+        }
+      }
+      .panel {
+        background: var(--surface-card);
+        border: 1px solid var(--border-subtle);
+        border-radius: 16px;
+        padding: 24px;
+        backdrop-filter: blur(8px);
+        position: relative;
+        overflow: hidden;
+        transition: border-color 220ms var(--ease-smooth), box-shadow 220ms var(--ease-smooth),
+          transform 220ms var(--ease-smooth);
+      }
+      .panel::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 1px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(255, 255, 255, 0.8),
+          transparent
+        );
+        opacity: 0.9;
+      }
+      .panel:hover {
+        border-color: var(--border-medium);
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.06);
+      }
+      .panel.card-enter {
+        animation: card-enter 520ms var(--ease-smooth) both;
+      }
+      @keyframes card-enter {
+        from {
+          transform: translateY(16px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+      .panel-title {
+        font-family: var(--font-ui);
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        margin: 0 0 14px;
+      }
+      .span-4 {
+        grid-column: span 4;
+      }
+      @media (max-width: 1200px) {
+        .span-4 {
+          grid-column: span 8;
+        }
+      }
+      @media (max-width: 900px) {
+        .span-4 {
+          grid-column: 1 / -1;
+        }
+      }
+      .span-8 {
+        grid-column: span 8;
+      }
+      @media (max-width: 900px) {
+        .span-8 {
+          grid-column: 1 / -1;
+        }
+      }
+      label.small {
+        display: block;
+        font-size: 11px;
+        color: var(--text-muted);
+        margin: 10px 0 6px;
+      }
+      input.input {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border-medium);
+        background: var(--surface-inset);
+        font-family: var(--font-mono);
+        font-size: 12px;
+        outline: none;
+      }
+      input.input:focus {
+        border-color: var(--orange-primary);
+        box-shadow: 0 0 0 3px var(--orange-glow);
+      }
+      .btn-primary {
+        margin-top: 12px;
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        background: linear-gradient(180deg, var(--orange-bright), var(--orange-deep));
+        color: var(--text-inverse);
+        font-weight: 600;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+      }
+      .btn-primary::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        transform: translateX(-120%);
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(255, 255, 255, 0.35),
+          transparent
+        );
+        opacity: 0;
+      }
+      .btn-primary:hover::before {
+        opacity: 1;
+        animation: shimmer-sweep 900ms var(--ease-smooth) both;
+      }
+      .btn-primary:active {
+        transform: scale(0.97);
+      }
+      @keyframes shimmer-sweep {
+        0% {
+          transform: translateX(-120%);
+        }
+        100% {
+          transform: translateX(120%);
+        }
+      }
+      .timeline {
+        margin-top: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+      .stage {
+        display: grid;
+        grid-template-columns: 34px 1fr auto;
+        gap: 10px;
+        align-items: center;
+        position: relative;
+        padding-bottom: 14px;
+      }
+      .stage:last-child {
+        padding-bottom: 0;
+      }
+      .rail {
+        position: absolute;
+        left: 11px;
+        top: 26px;
+        bottom: -6px;
+        width: 2px;
+        background: rgba(180, 150, 100, 0.25);
+        overflow: hidden;
+      }
+      .stage:last-child .rail {
+        display: none;
+      }
+      .rail-fill {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 0%;
+        background: linear-gradient(180deg, var(--orange-primary), #52a878);
+        clip-path: inset(0 0 0 0);
+        animation: rail-grow 700ms var(--ease-smooth) forwards;
+        animation-play-state: paused;
+      }
+      .stage.done .rail-fill {
+        animation-play-state: running;
+        height: 100%;
+      }
+      @keyframes rail-grow {
+        from {
+          height: 0%;
+        }
+        to {
+          height: 100%;
+        }
+      }
+      .node {
+        width: 24px;
+        height: 24px;
+        border-radius: 999px;
+        border: 2px solid rgba(180, 150, 100, 0.35);
+        background: var(--cream-mid);
+        display: grid;
+        place-items: center;
+        z-index: 1;
+      }
+      .node.running {
+        background: var(--orange-primary);
+        animation: pulse-ring 1.8s infinite;
+      }
+      .node.pass {
+        background: #52a878;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 800;
+      }
+      .node.fail {
+        background: #c94040;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 800;
+      }
+      .node.blocked {
+        background: #c97a10;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 900;
+      }
+      .chip {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--border-subtle);
+        background: rgba(255, 252, 245, 0.65);
+        color: var(--text-secondary);
+      }
+      .terminal {
+        background: #1c1508;
+        border-radius: 10px;
+        border: 1px solid rgba(212, 88, 10, 0.2);
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        height: 320px;
+        overflow: auto;
+        color: rgba(245, 240, 232, 0.92);
+      }
+      .term-bar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(212, 88, 10, 0.15);
+      }
+      .dots {
+        display: inline-flex;
+        gap: 6px;
+      }
+      .dots i {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        display: inline-block;
+      }
+      .dots i:nth-child(1) {
+        background: #ff5f56;
+      }
+      .dots i:nth-child(2) {
+        background: #ffbd2e;
+      }
+      .dots i:nth-child(3) {
+        background: #27c93f;
+      }
+      .term-title {
+        flex: 1;
+        text-align: center;
+        letter-spacing: 0.12em;
+        font-size: 11px;
+        color: rgba(245, 240, 232, 0.55);
+      }
+      .term-body {
+        padding: 12px 12px 16px;
+      }
+      .log-line {
+        margin: 6px 0;
+        animation: log-enter 420ms var(--ease-smooth) both;
+      }
+      @keyframes log-enter {
+        from {
+          transform: translateX(-4px);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+      .ts {
+        color: rgba(212, 88, 10, 0.5);
+        margin-right: 8px;
+      }
+      .badge {
+        display: inline-flex;
+        margin-right: 8px;
+        padding: 2px 6px;
+        border-radius: 6px;
+        font-size: 10px;
+        letter-spacing: 0.06em;
+      }
+      .badge.info {
+        background: rgba(82, 168, 120, 0.18);
+        color: rgba(82, 168, 120, 0.95);
+      }
+      .badge.warn {
+        background: rgba(201, 122, 16, 0.18);
+        color: rgba(201, 122, 16, 0.95);
+      }
+      .badge.err {
+        background: rgba(201, 64, 64, 0.18);
+        color: rgba(201, 64, 64, 0.95);
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      .metric {
+        border-radius: 12px;
+        border: 1px solid var(--border-subtle);
+        background: rgba(28, 21, 8, 0.04);
+        padding: 10px 12px;
+      }
+      .metric .k {
+        font-size: 11px;
+        color: var(--text-muted);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .metric .v {
+        margin-top: 6px;
+        font-family: var(--font-mono);
+        font-size: 20px;
+        color: var(--text-primary);
+      }
+      textarea.dark {
+        width: 100%;
+        min-height: 120px;
+        resize: vertical;
+        border-radius: 10px;
+        border: 1px solid rgba(212, 88, 10, 0.2);
+        background: #1c1508;
+        color: rgba(245, 240, 232, 0.85);
+        font-family: var(--font-mono);
+        font-size: 12px;
+        padding: 12px;
+        outline: none;
+      }
+      .toggle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 12px 0;
+      }
+      .switch {
+        width: 40px;
+        height: 22px;
+        border-radius: 999px;
+        background: rgba(180, 150, 100, 0.25);
+        position: relative;
+        cursor: pointer;
+        border: 1px solid var(--border-subtle);
+      }
+      .switch::after {
+        content: "";
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        background: #fff;
+        position: absolute;
+        top: 1px;
+        left: 2px;
+        transition: transform 320ms var(--ease-spring), background 200ms var(--ease-smooth);
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+      }
+      .switch input {
+        display: none;
+      }
+      .switch input:checked + .slider-track {
+        background: rgba(212, 88, 10, 0.35);
+      }
+      .switch input:checked ~ .thumb {
+        transform: translateX(18px);
+      }
+      .switch .slider-track {
+        position: absolute;
+        inset: 0;
+        border-radius: 999px;
+      }
+      .switch .thumb {
+        position: absolute;
+        top: 1px;
+        left: 2px;
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        background: #fff;
+        transition: transform 320ms var(--ease-spring);
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+      }
+      .switch.on {
+        background: rgba(212, 88, 10, 0.35);
+      }
+      .switch.on .thumb {
+        transform: translateX(18px);
+      }
+      .progress-indeterminate {
+        height: 3px;
+        border-radius: 999px;
+        background: rgba(180, 150, 100, 0.25);
+        overflow: hidden;
+        margin-top: 10px;
+        display: none;
+      }
+      .progress-indeterminate.on {
+        display: block;
+      }
+      .progress-indeterminate::after {
+        content: "";
+        display: block;
+        height: 100%;
+        width: 40%;
+        background: linear-gradient(90deg, transparent, var(--orange-bright), transparent);
+        animation: progress-indeterminate 1.1s infinite linear;
+      }
+      @keyframes progress-indeterminate {
+        0% {
+          transform: translateX(-120%);
+        }
+        100% {
+          transform: translateX(260%);
+        }
+      }
+      .artifact-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .artifact {
+        border: 1px solid var(--border-subtle);
+        border-radius: 12px;
+        padding: 12px;
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        transition: transform 180ms var(--ease-smooth), border-color 180ms var(--ease-smooth);
+        animation: artifact-enter 520ms var(--ease-smooth) both;
+      }
+      @keyframes artifact-enter {
+        from {
+          transform: translateY(8px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+      .artifact:hover {
+        transform: translateX(2px);
+        border-color: rgba(212, 88, 10, 0.55);
+      }
+      .empty-art {
+        padding: 18px;
+        border-radius: 14px;
+        border: 1px dashed var(--border-medium);
+        color: var(--text-muted);
+        display: grid;
+        place-items: center;
+        gap: 10px;
+        text-align: center;
+      }
+      #connection-toast {
+        position: fixed;
+        right: 18px;
+        bottom: 18px;
+        z-index: 1200;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid var(--border-medium);
+        background: var(--surface-card);
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.18);
+        display: none;
+        max-width: 360px;
+        font-size: 13px;
+        color: var(--text-secondary);
+        animation: toast-in 260ms var(--ease-smooth) both;
+      }
+      @keyframes toast-in {
+        from {
+          transform: translateY(20px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+      @keyframes slideUp {
+        from {
+          transform: translateY(18px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(26, 18, 8, 0.7);
+        backdrop-filter: blur(6px);
+        z-index: 1000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        animation: fadeIn 200ms ease;
+      }
+      .modal-container {
+        background: var(--cream);
+        border: 1px solid var(--border-medium);
+        border-radius: 20px;
+        width: 100%;
+        max-width: 680px;
+        max-height: 90vh;
+        overflow: auto;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.2);
+        animation: slideUp 300ms var(--ease-spring);
+      }
+      .modal-head {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        padding: 18px 18px 0;
+      }
+      .modal-head h2 {
+        margin: 0;
+        font-family: var(--font-display);
+        font-size: 22px;
+      }
+      .modal-head p {
+        margin: 6px 0 0;
+        color: var(--text-muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .modal-body {
+        padding: 14px 18px 10px;
+      }
+      .modal-foot {
+        padding: 12px 18px 18px;
+        display: grid;
+        gap: 10px;
+      }
+      .git-dropzone {
+        border: 2px dashed rgba(212, 88, 10, 0.4);
+        border-radius: 14px;
+        padding: 40px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 200ms ease;
+      }
+      .git-dropzone:hover,
+      .git-dropzone.dragover {
+        border-style: solid;
+        border-color: var(--orange-primary);
+        background: var(--orange-glow);
+      }
+      .file-list {
+        margin-top: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .file-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border-subtle);
+        background: rgba(255, 252, 245, 0.65);
+        font-size: 12px;
+      }
+      .severity-critical {
+        background: rgba(201, 64, 64, 0.15);
+        color: #a32d2d;
+        border: 1px solid rgba(201, 64, 64, 0.3);
+      }
+      .severity-high {
+        background: rgba(201, 122, 16, 0.15);
+        color: #7a5a10;
+        border: 1px solid rgba(201, 122, 16, 0.25);
+      }
+      .severity-medium {
+        background: rgba(212, 88, 10, 0.15);
+        color: #7a3505;
+        border: 1px solid rgba(212, 88, 10, 0.25);
+      }
+      .severity-low {
+        background: rgba(82, 168, 120, 0.15);
+        color: #1e5c3a;
+        border: 1px solid rgba(82, 168, 120, 0.25);
+      }
+      pre.code {
+        background: #1c1508;
+        color: rgba(245, 240, 232, 0.85);
+        font-family: var(--font-mono);
+        font-size: 11px;
+        border-radius: 8px;
+        padding: 10px 14px;
+        overflow: auto;
+        border: 1px solid rgba(212, 88, 10, 0.18);
+      }
+      .issue-card {
+        border: 1px solid var(--border-subtle);
+        border-radius: 12px;
+        padding: 12px;
+        margin-top: 10px;
+        background: rgba(255, 252, 245, 0.65);
+      }
+      .inline-err {
+        color: #a32d2d;
+        font-size: 12px;
+        margin-top: 8px;
+        display: none;
+      }
+      .inline-err.on {
+        display: block;
+      }
+      ::selection {
+        background: var(--orange-glow-strong);
+        color: var(--text-primary);
+      }
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--sand) transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <svg style="width: 0; height: 0; position: absolute">
+      <filter id="noiseFilter">
+        <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch" />
+        <feColorMatrix type="saturate" values="0" />
+      </filter>
+    </svg>
+
+    <div class="bg-system" aria-hidden="true">
+      <div class="noise"></div>
+      <div class="glow"></div>
+      <div class="dots"></div>
+    </div>
+
+    <div class="shell">
+      <header class="top">
+        <div class="brand">
+          <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+            <polygon points="32,4 54,18 54,46 32,60 10,46 10,18" fill="none" />
+            <polygon points="32,4 54,18 32,22 10,18" fill="var(--orange-primary)" />
+            <polygon points="54,18 54,46 32,40 32,22" fill="var(--orange-deep)" />
+            <polygon points="10,18 32,22 32,40 10,46" fill="var(--orange-primary)" />
+            <polygon points="32,40 54,46 32,60 10,46" fill="var(--orange-deep)" />
+            <polygon points="32,22 54,18 32,4 10,18" fill="var(--orange-deep)" opacity="0.35" />
+            <polygon points="32,40 54,46 32,60" fill="var(--orange-primary)" opacity="0.55" />
+          </svg>
+          <div>
+            <h1 class="title">ORION</h1>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px">
+              DevOps Agent Console
+            </div>
+          </div>
+        </div>
+
+        <div class="right-cluster">
+          <div class="pill" id="pill-api">
+            <span class="dot ok" id="dot-api"></span>
+            <span>API</span>
+          </div>
+          <div class="pill" id="pill-ws">
+            <span class="dot warn" id="dot-ws"></span>
+            <span>WS</span>
+          </div>
+          <div class="pill" id="pill-mon">
+            <span class="dot ok" id="dot-mon"></span>
+            <span>MON</span>
+          </div>
+
+          <a
+            id="login-btn"
+            class="btn-dark"
+            href="http://localhost:8001/api/v1/auth/github"
+            >Login with GitHub</a
+          >
+          <div class="userbox" id="userbox">
+            <img id="avatar" alt="avatar" />
+            <span class="mono" id="username">@user</span>
+            <a class="mono" href="http://localhost:8001/api/v1/auth/logout" id="logout-link"
+              >logout</a
+            >
+          </div>
+        </div>
+      </header>
+
+      <div id="auth-banner">
+        You are not logged in. Auto-PR features require GitHub authentication.
+        <a href="http://localhost:8001/api/v1/auth/github">Login</a>
+      </div>
+
+      <div class="modal-triggers">
+        <button
+          type="button"
+          class="btn-modal-trigger btn-primary"
+          onclick="openModal('modal-git-logs')"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M4 6h16v12H4V6z"
+              stroke="currentColor"
+              stroke-width="1.6"
+            />
+            <path d="M8 10h8M8 14h5" stroke="currentColor" stroke-width="1.6" />
+          </svg>
+          Git Log Analyzer
+        </button>
+        <button
+          type="button"
+          class="btn-modal-trigger btn-primary"
+          onclick="openModal('modal-payment')"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <rect x="3" y="6" width="18" height="12" rx="2" stroke="currentColor" stroke-width="1.6" />
+            <path d="M3 10h18" stroke="currentColor" stroke-width="1.6" />
+          </svg>
+          Payment Analyzer
+        </button>
+      </div>
+
+      <div class="dashboard" id="dashboard">
+        <section class="panel span-4 card-enter" style="--i: 0">
+          <div class="panel-title">Pipeline Input</div>
+          <label class="small">Repository</label>
+          <input class="input" id="repo-input" placeholder="owner/name" />
+          <label class="small">GitHub clone URL</label>
+          <input class="input" id="clone-url" placeholder="https://github.com/owner/repo.git" />
+          <button class="btn-primary" type="button" id="fetch-btn">Fetch</button>
+        </section>
+
+        <section class="panel span-4 card-enter" style="--i: 1">
+          <div class="panel-title">Pipeline Control</div>
+          <label class="small">Pipeline ID</label>
+          <input class="input" id="pipeline-id" placeholder="uuid" />
+          <label class="small">Deployment API Key (optional)</label>
+          <input class="input" id="deploy-key" type="password" placeholder="••••••••" />
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px">
+            <button class="btn-primary" type="button" id="refresh-btn">Refresh Status</button>
+            <button class="btn-primary" type="button" id="trigger-btn">Trigger Deployment</button>
+          </div>
+
+          <div class="timeline" id="stage-timeline" aria-label="pipeline stages">
+            <!-- 9 stages -->
+          </div>
+        </section>
+
+        <section class="panel span-4 card-enter" style="--i: 2">
+          <div class="panel-title">Agent Logs</div>
+          <div class="terminal" id="agent-terminal">
+            <div class="term-bar">
+              <span class="dots"><i></i><i></i><i></i></span>
+              <div class="term-title">AGENT LOGS</div>
+            </div>
+            <div class="term-body" id="term-body"></div>
+          </div>
+        </section>
+
+        <section class="panel span-4 card-enter" style="--i: 3">
+          <div class="panel-title">Monitoring</div>
+          <div class="metrics">
+            <div class="metric">
+              <div class="k">Errors</div>
+              <div class="v" id="m-err">0</div>
+            </div>
+            <div class="metric">
+              <div class="k">Warnings</div>
+              <div class="v" id="m-warn">0</div>
+            </div>
+            <div class="metric">
+              <div class="k">Uptime</div>
+              <div class="v" id="m-up">0s</div>
+            </div>
+          </div>
+          <textarea
+            class="dark"
+            id="mon-input"
+            placeholder="Paste runtime logs here for quick triage…"
+          ></textarea>
+          <div class="toggle">
+            <div class="switch" id="mon-switch" role="switch" aria-checked="false" tabindex="0">
+              <div class="slider-track"></div>
+              <div class="thumb"></div>
+            </div>
+            <div style="font-size: 12px; color: var(--text-muted)">Live tail (simulated)</div>
+          </div>
+          <button class="btn-primary" type="button" id="mon-analyze">Analyze Logs</button>
+          <div class="progress-indeterminate" id="mon-prog"></div>
+        </section>
+
+        <section class="panel span-8 card-enter" style="--i: 4">
+          <div class="panel-title">Agent Artifacts</div>
+          <div class="empty-art" id="artifact-empty">
+            <svg width="120" height="72" viewBox="0 0 120 72" fill="none" aria-hidden="true">
+              <path d="M10 58 L40 18 L70 44 L90 22 L110 58 Z" stroke="rgba(180,150,100,0.45)" />
+              <path d="M18 58 L55 30 L75 48 L102 58" stroke="rgba(212,88,10,0.35)" />
+            </svg>
+            <div style="max-width: 520px">
+              No artifacts yet. Run a pipeline or open an analyzer modal to generate structured
+              outputs.
+            </div>
+          </div>
+          <div class="artifact-list" id="artifact-list" style="display: none"></div>
+        </section>
+      </div>
+    </div>
+
+    <div id="connection-toast" role="status" aria-live="polite"></div>
+
+    <div class="modal-overlay" id="modal-git-logs">
+      <div class="modal-container" role="dialog" aria-modal="true" aria-labelledby="git-title">
+        <div class="modal-head">
+          <div style="width: 44px; height: 44px">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M4 6h16v12H4V6z"
+                stroke="var(--orange-primary)"
+                stroke-width="1.6"
+              />
+              <path d="M8 10h8M8 14h5" stroke="var(--orange-primary)" stroke-width="1.6" />
+            </svg>
+          </div>
+          <div style="flex: 1">
+            <h2 id="git-title">Git Log Analyzer</h2>
+            <p>Drop logs, screenshots, or ZIP files — AI finds every error</p>
+          </div>
+          <button class="btn-modal-trigger" type="button" onclick="closeModal('modal-git-logs')">
+            Close
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="git-dropzone" id="git-dropzone">
+            <div>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M12 3v10"
+                  stroke="var(--orange-primary)"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M8 7l4-4 4 4"
+                  stroke="var(--orange-primary)"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M4 14v4a3 3 0 003 3h10a3 3 0 003-3v-4"
+                  stroke="var(--orange-primary)"
+                  stroke-width="1.6"
+                />
+              </svg>
+              <div style="margin-top: 10px; font-size: 14px; color: var(--text-secondary)">
+                Drop log files, screenshots, or GitHub Actions ZIP here
+              </div>
+              <div style="margin-top: 6px; font-size: 11px; color: var(--text-muted)">
+                Supports: .log .txt .zip .png .jpg .csv
+              </div>
+            </div>
+            <input
+              id="git-file-input"
+              type="file"
+              multiple
+              accept=".log,.txt,.zip,.png,.jpg,.jpeg,.csv"
+              style="display: none"
+            />
+          </div>
+          <div class="file-list" id="git-file-list"></div>
+
+          <label class="small" for="git-text-input">Paste logs</label>
+          <textarea
+            id="git-text-input"
+            placeholder="Or paste your log output directly here...
+
+Example:
+2026-03-22T10:12:06Z ERROR timeout connecting to db
+2026-03-22T10:12:07Z FATAL build failed: missing module"
+          ></textarea>
+          <div class="inline-err" id="git-inline-err"></div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn-modal-trigger" type="button" onclick="closeModal('modal-git-logs')">
+            Cancel
+          </button>
+          <button class="btn-primary" type="button" id="git-analyze-btn" onclick="runGitAnalysis()">
+            Analyze
+          </button>
+        </div>
+        <div class="modal-body" style="padding-top: 0">
+          <div id="git-results" class="results-container" style="display: none"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-payment">
+      <div class="modal-container" role="dialog" aria-modal="true" aria-labelledby="pay-title">
+        <div class="modal-head">
+          <div style="width: 44px; height: 44px">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none">
+              <rect x="3" y="6" width="18" height="12" rx="2" stroke="var(--orange-primary)" stroke-width="1.6" />
+              <path d="M3 10h18" stroke="var(--orange-primary)" stroke-width="1.6" />
+            </svg>
+          </div>
+          <div style="flex: 1">
+            <h2 id="pay-title">Payment Analyzer</h2>
+            <p>Upload CSV exports, screenshots, or paste webhook data</p>
+          </div>
+          <button class="btn-modal-trigger" type="button" onclick="closeModal('modal-payment')">
+            Close
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="git-dropzone" id="pay-dropzone">
+            <div>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M12 3v10"
+                  stroke="var(--orange-primary)"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M8 7l4-4 4 4"
+                  stroke="var(--orange-primary)"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M4 14v4a3 3 0 003 3h10a3 3 0 003-3v-4"
+                  stroke="var(--orange-primary)"
+                  stroke-width="1.6"
+                />
+              </svg>
+              <div style="margin-top: 10px; font-size: 14px; color: var(--text-secondary)">
+                Drop payment exports or evidence here
+              </div>
+              <div style="margin-top: 6px; font-size: 11px; color: var(--text-muted)">
+                Supports: .csv .png .jpg .pdf .json
+              </div>
+            </div>
+            <input
+              id="pay-file-input"
+              type="file"
+              multiple
+              accept=".csv,.png,.jpg,.jpeg,.pdf,.json"
+              style="display: none"
+            />
+          </div>
+          <div class="file-list" id="pay-file-list"></div>
+
+          <label class="small" for="pay-text-input">Paste data</label>
+          <textarea
+            id="pay-text-input"
+            class="dark"
+            style="background: #1c1508"
+            placeholder="Paste CSV snippets, webhook JSON, or transaction IDs…"
+          ></textarea>
+          <div class="inline-err" id="pay-inline-err"></div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn-modal-trigger" type="button" onclick="closeModal('modal-payment')">
+            Cancel
+          </button>
+          <button
+            class="btn-primary"
+            type="button"
+            id="pay-analyze-btn"
+            onclick="runPaymentAnalysis()"
+          >
+            Analyze
+          </button>
+        </div>
+        <div class="modal-body" style="padding-top: 0">
+          <div id="payment-results" style="display: none"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const API = "http://localhost:8001";
+
+      class WebSocketManager {
+        constructor() {
+          this.ws = null;
+          this.pipelineId = null;
+          this.retries = 0;
+          this.backoffMs = 1000;
+          this.timer = null;
+        }
+
+        setPipelineId(id) {
+          this.pipelineId = id;
+          this.connect();
+        }
+
+        connect() {
+          if (!this.pipelineId) return;
+          if (this.retries >= 5) {
+            this._setWsState("idle");
+            return;
+          }
+          this._setWsState("connecting");
+          try {
+            this.ws = new WebSocket(`ws://localhost:8001/ws/pipeline/${this.pipelineId}`);
+          } catch {
+            this.scheduleReconnect();
+            return;
+          }
+          this.ws.onopen = () => {
+            this.retries = 0;
+            this.backoffMs = 1000;
+            this._setWsState("live");
+            toast("WebSocket connected");
+          };
+          this.ws.onmessage = (ev) => {
+            this._setWsState("live");
+            let msg;
+            try {
+              msg = JSON.parse(ev.data);
+            } catch {
+              return;
+            }
+            const kind = msg.kind || msg.type || "log";
+            window.dispatchEvent(new CustomEvent("orion:log", { detail: msg }));
+            if (kind === "stage-update") {
+              window.dispatchEvent(new CustomEvent("orion:stage-update", { detail: msg }));
+            } else {
+              window.dispatchEvent(new CustomEvent("orion:artifact", { detail: msg }));
+            }
+          };
+          this.ws.onclose = () => {
+            this._setWsState("warn");
+            this.scheduleReconnect();
+          };
+          this.ws.onerror = () => {
+            this._setWsState("warn");
+          };
+        }
+
+        scheduleReconnect() {
+          clearTimeout(this.timer);
+          this.retries += 1;
+          const delay = Math.min(16000, this.backoffMs);
+          this.backoffMs = Math.min(16000, this.backoffMs * 2);
+          this.timer = setTimeout(() => this.connect(), delay);
+          toast(`WebSocket reconnecting in ${delay}ms (try ${this.retries}/5)`);
+        }
+
+        _setWsState(state) {
+          const pill = document.getElementById("pill-ws");
+          const dot = document.getElementById("dot-ws");
+          pill.classList.remove("ws-live");
+          dot.classList.remove("ok", "warn", "live");
+          if (state === "live") {
+            dot.classList.add("live");
+            pill.classList.add("ws-live");
+          } else if (state === "connecting") {
+            dot.classList.add("warn");
+          } else if (state === "warn") {
+            dot.classList.add("warn");
+          } else {
+            dot.classList.add("ok");
+          }
+        }
+      }
+
+      const wsManager = new WebSocketManager();
+
+      function toast(text) {
+        const el = document.getElementById("connection-toast");
+        el.textContent = text;
+        el.style.display = "block";
+        clearTimeout(toast._t);
+        toast._t = setTimeout(() => {
+          el.style.display = "none";
+        }, 3000);
+      }
+
+      async function checkAuthStatus() {
+        const res = await fetch(`${API}/api/v1/auth/status`, { credentials: "include" });
+        const data = await res.json();
+        const loginBtn = document.getElementById("login-btn");
+        const userbox = document.getElementById("userbox");
+        const banner = document.getElementById("auth-banner");
+        if (data.authenticated) {
+          loginBtn.style.display = "none";
+          userbox.style.display = "inline-flex";
+          banner.style.display = "none";
+          document.getElementById("username").textContent = "@" + (data.username || "user");
+          if (data.avatar) document.getElementById("avatar").src = data.avatar;
+        } else {
+          loginBtn.style.display = "inline-flex";
+          userbox.style.display = "none";
+          banner.style.display = "block";
+        }
+      }
+
+      function openModal(id) {
+        const m = document.getElementById(id);
+        m.style.display = "flex";
+        document.body.style.overflow = "hidden";
+      }
+
+      function closeModal(id) {
+        const m = document.getElementById(id);
+        m.style.display = "none";
+        document.body.style.overflow = "";
+      }
+
+      function setupDropzone(dropzoneId, fileInputId, fileListId) {
+        const dz = document.getElementById(dropzoneId);
+        const fi = document.getElementById(fileInputId);
+        const list = document.getElementById(fileListId);
+        dz.addEventListener("click", () => fi.click());
+        dz.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          dz.classList.add("dragover");
+        });
+        dz.addEventListener("dragleave", () => dz.classList.remove("dragover"));
+        dz.addEventListener("drop", (e) => {
+          e.preventDefault();
+          dz.classList.remove("dragover");
+          fi.files = e.dataTransfer.files;
+          renderFileList(fi.files, fileListId);
+        });
+        fi.addEventListener("change", () => renderFileList(fi.files, fileListId));
+      }
+
+      function renderFileList(files, listId) {
+        const list = document.getElementById(listId);
+        list.innerHTML = "";
+        for (const f of files) {
+          const name = f.name.length > 40 ? f.name.slice(0, 37) + "…" : f.name;
+          const kb = f.size / 1024;
+          const size = kb > 1024 ? (kb / 1024).toFixed(2) + " MB" : kb.toFixed(1) + " KB";
+          let emoji = "📄";
+          if (f.name.toLowerCase().endsWith(".zip")) emoji = "🗜️";
+          if (/png|jpg|jpeg|webp/i.test(f.name)) emoji = "🖼️";
+          if (f.name.toLowerCase().endsWith(".csv")) emoji = "📊";
+          const div = document.createElement("div");
+          div.className = "file-item";
+          div.innerHTML = `<span>${emoji} <span class="mono">${name}</span></span><span class="mono">${size}</span>`;
+          list.appendChild(div);
+        }
+      }
+
+      function severityClass(sev) {
+        const s = (sev || "").toLowerCase();
+        if (s === "critical") return "severity-critical";
+        if (s === "high") return "severity-high";
+        if (s === "medium") return "severity-medium";
+        return "severity-low";
+      }
+
+      async function runGitAnalysis() {
+        const fi = document.getElementById("git-file-input");
+        const ta = document.getElementById("git-text-input");
+        const err = document.getElementById("git-inline-err");
+        err.classList.remove("on");
+        err.textContent = "";
+        if ((!fi.files || fi.files.length === 0) && !ta.value.trim()) {
+          err.textContent = "Add at least one file or paste logs.";
+          err.classList.add("on");
+          return;
+        }
+        const btn = document.getElementById("git-analyze-btn");
+        const old = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "Analyzing...";
+        const fd = new FormData();
+        for (const f of fi.files) fd.append("files", f);
+        fd.append("text_input", ta.value || "");
+        try {
+          const res = await fetch(`${API}/api/v1/multimodal/git-logs`, {
+            method: "POST",
+            credentials: "include",
+            body: fd,
+          });
+          if (res.status === 401) {
+            err.textContent = "Please login with GitHub first";
+            err.classList.add("on");
+            return;
+          }
+          const data = await res.json();
+          renderGitResults(data.result);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = old;
+        }
+      }
+
+      function renderGitResults(result) {
+        const box = document.getElementById("git-results");
+        box.style.display = "block";
+        const sev = result.severity || "low";
+        const issues = result.issues || [];
+        const actions = result.immediate_actions || [];
+        const cmdBlocks = [];
+        let html = "";
+        html += `<div style="display:flex;gap:10px;align-items:center;justify-content:space-between">`;
+        html += `<div class="${severityClass(sev)}" style="padding:6px 10px;border-radius:999px;font-size:12px">${sev}</div>`;
+        html += `<button class="btn-modal-trigger" type="button" id="git-export-btn">Export JSON</button>`;
+        html += `</div>`;
+        html += `<p style="color:var(--text-secondary);line-height:1.5">${escapeHtml(
+          result.summary || ""
+        )}</p>`;
+        if (actions.length) {
+          html += `<div style="margin-top:10px"><div class="panel-title">Immediate actions</div><ol style="margin:0;padding-left:18px;color:var(--text-secondary)">`;
+          actions.forEach((a) => (html += `<li style="margin:6px 0">${escapeHtml(String(a))}</li>`));
+          html += `</ol></div>`;
+        }
+        for (const iss of issues) {
+          html += `<div class="issue-card">`;
+          html += `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">`;
+          html += `<span class="mono" style="font-size:11px;color:var(--text-muted)">${escapeHtml(
+            String(iss.category || "issue")
+          )}</span>`;
+          html += `</div>`;
+          html += `<div style="font-weight:700;margin-top:6px">${escapeHtml(
+            String(iss.title || "")
+          )}</div>`;
+          html += `<div style="margin-top:6px;color:var(--text-secondary);font-size:13px">${escapeHtml(
+            String(iss.description || "")
+          )}</div>`;
+          html += `<div style="margin-top:8px;color:var(--text-muted);font-size:12px"><b>Root cause:</b> ${escapeHtml(
+            String(iss.root_cause || "")
+          )}</div>`;
+          const cmds = iss.fix_commands || [];
+          if (cmds.length) {
+            const block = cmds.map((c) => "$ " + String(c)).join("\n");
+            cmdBlocks.push(cmds.join("\n"));
+            const idx = cmdBlocks.length - 1;
+            html += `<div style="margin-top:10px;display:flex;gap:10px;align-items:flex-start">`;
+            html += `<pre class="code" style="flex:1"><code>${escapeHtml(block)}</code></pre>`;
+            html += `<button class="btn-modal-trigger git-copy-cmds" type="button" data-idx="${idx}">Copy</button>`;
+            html += `</div>`;
+          }
+          html += `</div>`;
+        }
+        const st = result.server_timeout_analysis || {};
+        if (st.detected) {
+          html += `<div class="issue-card"><div class="panel-title">Server timeouts</div><pre class="code"><code>${escapeHtml(
+            JSON.stringify(st, null, 2)
+          )}</code></pre></div>`;
+        }
+        const be = result.build_error_analysis || {};
+        if (be.detected) {
+          html += `<div class="issue-card"><div class="panel-title">Build errors</div>`;
+          if (be.exact_fix_command) {
+            html += `<pre class="code"><code>$ ${escapeHtml(String(be.exact_fix_command))}</code></pre>`;
+          }
+          html += `</div>`;
+        }
+        box.innerHTML = html;
+        const exp = document.getElementById("git-export-btn");
+        if (exp) exp.addEventListener("click", () => exportResults(result, "git-analysis.json"));
+        box.querySelectorAll(".git-copy-cmds").forEach((b) => {
+          b.addEventListener("click", () => {
+            const idx = Number(b.getAttribute("data-idx"));
+            const text = cmdBlocks[idx] || "";
+            navigator.clipboard.writeText(text);
+          });
+        });
+      }
+
+      async function runPaymentAnalysis() {
+        const fi = document.getElementById("pay-file-input");
+        const ta = document.getElementById("pay-text-input");
+        const err = document.getElementById("pay-inline-err");
+        err.classList.remove("on");
+        err.textContent = "";
+        if ((!fi.files || fi.files.length === 0) && !ta.value.trim()) {
+          err.textContent = "Add at least one file or paste data.";
+          err.classList.add("on");
+          return;
+        }
+        const btn = document.getElementById("pay-analyze-btn");
+        const old = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "Analyzing...";
+        const fd = new FormData();
+        for (const f of fi.files) fd.append("files", f);
+        fd.append("text_input", ta.value || "");
+        try {
+          const res = await fetch(`${API}/api/v1/multimodal/payment`, {
+            method: "POST",
+            credentials: "include",
+            body: fd,
+          });
+          if (res.status === 401) {
+            err.textContent = "Please login with GitHub first";
+            err.classList.add("on");
+            return;
+          }
+          const data = await res.json();
+          renderPaymentResults(data.result);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = old;
+        }
+      }
+
+      function renderPaymentResults(result) {
+        const box = document.getElementById("payment-results");
+        box.style.display = "block";
+        const sev = result.severity || "low";
+        const rate = result.success_rate_percent;
+        const rec = result.reconciliation_summary || {};
+        let html = "";
+        html += `<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap">`;
+        html += `<div class="${severityClass(sev)}" style="padding:6px 10px;border-radius:999px;font-size:12px">${sev}</div>`;
+        html += `<div style="font-size:34px;font-family:var(--font-mono);font-weight:800">${Number(
+          rate || 0
+        ).toFixed(2)}%</div>`;
+        html += `<button class="btn-modal-trigger" type="button" id="pay-export-btn">Export JSON</button>`;
+        html += `</div>`;
+        const rs = rec.reconciliation_status || "unable_to_determine";
+        const rsClass =
+          rs === "balanced" ? "severity-low" : rs === "discrepancy_found" ? "severity-critical" : "severity-medium";
+        html += `<div style="margin-top:10px;padding:8px 10px;border-radius:10px" class="${rsClass}">Reconciliation: <b>${escapeHtml(
+          String(rs)
+        )}</b></div>`;
+        html += `<p style="color:var(--text-secondary);line-height:1.5">${escapeHtml(
+          result.summary || ""
+        )}</p>`;
+        box.innerHTML = html;
+        const exp2 = document.getElementById("pay-export-btn");
+        if (exp2) exp2.addEventListener("click", () => exportResults(result, "payment-analysis.json"));
+      }
+
+      function exportResults(data, filename) {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function countUp(element, target, duration = 800) {
+        const start = performance.now();
+        const from = Number(element.textContent) || 0;
+        const to = Number(target);
+        function easeOutQuart(t) {
+          return 1 - Math.pow(1 - t, 4);
+        }
+        function frame(now) {
+          const t = Math.min(1, (now - start) / duration);
+          const v = from + (to - from) * easeOutQuart(t);
+          element.textContent = String(Math.round(v));
+          if (t < 1) requestAnimationFrame(frame);
+        }
+        requestAnimationFrame(frame);
+      }
+
+      function buildStages() {
+        const names = [
+          "Ingest repository",
+          "Code analysis",
+          "Security scan",
+          "QA tests",
+          "Stress test",
+          "Approval gate",
+          "Deploy",
+          "Monitoring window",
+          "Post-deploy verification",
+        ];
+        const root = document.getElementById("stage-timeline");
+        root.innerHTML = "";
+        names.forEach((n, idx) => {
+          const row = document.createElement("div");
+          row.className = "stage";
+          row.innerHTML = `
+            <div class="rail"><div class="rail-fill"></div></div>
+            <div class="node" id="node-${idx}"> </div>
+            <div style="font-size:13px;color:var(--text-secondary)">${escapeHtml(n)}</div>
+            <div class="chip" id="chip-${idx}">pending</div>
+          `;
+          root.appendChild(row);
+        });
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        checkAuthStatus();
+        setInterval(checkAuthStatus, 30000);
+        setupDropzone("git-dropzone", "git-file-input", "git-file-list");
+        setupDropzone("pay-dropzone", "pay-file-input", "pay-file-list");
+        buildStages();
+
+        document.querySelectorAll(".panel.card-enter").forEach((p, idx) => {
+          p.style.animationDelay = `${idx * 80}ms`;
+        });
+
+        document.getElementById("pipeline-id").addEventListener("change", (e) => {
+          wsManager.setPipelineId(e.target.value.trim());
+        });
+
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") {
+            document.querySelectorAll(".modal-overlay").forEach((m) => {
+              if (m.style.display === "flex") closeModal(m.id);
+            });
+          }
+        });
+
+        const sw = document.getElementById("mon-switch");
+        sw.addEventListener("click", () => {
+          sw.classList.toggle("on");
+        });
+
+        document.getElementById("mon-analyze").addEventListener("click", () => {
+          const pr = document.getElementById("mon-prog");
+          pr.classList.add("on");
+          setTimeout(() => pr.classList.remove("on"), 1600);
+          countUp(document.getElementById("m-err"), 3);
+          countUp(document.getElementById("m-warn"), 7);
+        });
+
+        let up = 0;
+        setInterval(() => {
+          up += 1;
+          document.getElementById("m-up").textContent = up + "s";
+        }, 1000);
+
+        // demo terminal lines
+        const tb = document.getElementById("term-body");
+        const line = (t, b, m) =>
+          `<div class="log-line"><span class="ts">${t}</span><span class="badge ${b}">${b.toUpperCase()}</span>${escapeHtml(
+            m
+          )}</div>`;
+        tb.innerHTML =
+          line("10:12:06Z", "info", "ORION orchestrator online") +
+          line("10:12:07Z", "warn", "Staging health endpoint slow (p95 820ms)") +
+          line("10:12:09Z", "err", "Retrying GitHub status update");
+
+        document.addEventListener("mousedown", (e) => {
+          const t = e.target.closest(".btn-primary, .btn-modal-trigger");
+          if (!t) return;
+          const r = t.getBoundingClientRect();
+          const x = e.clientX - r.left;
+          const y = e.clientY - r.top;
+          const span = document.createElement("span");
+          span.className = "ripple";
+          span.style.position = "absolute";
+          span.style.left = x + "px";
+          span.style.top = y + "px";
+          span.style.width = "10px";
+          span.style.height = "10px";
+          span.style.borderRadius = "999px";
+          span.style.background = "rgba(255,255,255,0.35)";
+          span.style.pointerEvents = "none";
+          span.style.transform = "scale(0)";
+          span.style.opacity = "0.4";
+          t.style.position = t.style.position || "relative";
+          t.appendChild(span);
+          span.animate(
+            [{ transform: "scale(0)", opacity: 0.4 }, { transform: "scale(4)", opacity: 0 }],
+            { duration: 500, easing: "cubic-bezier(0.4,0,0.2,1)" }
+          ).onfinish = () => span.remove();
+        });
+
+        window.addEventListener("orion:stage-update", (ev) => {
+          toast("Stage update: " + (ev.detail.stage || ""));
+        });
+      });
+    </script>
+  </body>
+</html>

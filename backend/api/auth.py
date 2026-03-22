@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import secrets
 import hashlib
 import hmac
+import secrets
 from datetime import datetime
+from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -48,16 +49,22 @@ def validate_state_signature(signed_state: str) -> bool:
 
 @router.get("/github")
 async def github_login(request: Request) -> RedirectResponse:
+    if not settings.github_client_id or not settings.github_client_secret:
+        raise HTTPException(
+            status_code=503,
+            detail="GitHub OAuth is not configured — set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET in backend/.env (values from your GitHub OAuth app).",
+        )
+
     state_token, signed_state = generate_state_with_signature()
     # Also store in session as backup
     request.session["oauth_state_token"] = state_token
-    
+
     github_auth_url = (
         "https://github.com/login/oauth/authorize"
-        f"?client_id={settings.github_client_id}"
+        f"?client_id={quote(settings.github_client_id, safe='')}"
         "&scope=repo,read:user,user:email"
-        f"&redirect_uri={settings.github_redirect_uri}"
-        f"&state={signed_state}"
+        f"&redirect_uri={quote(settings.github_redirect_uri, safe='')}"
+        f"&state={quote(signed_state, safe='')}"
     )
     logger.info("GitHub OAuth initiated")
     

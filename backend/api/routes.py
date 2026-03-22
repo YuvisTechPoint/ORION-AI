@@ -84,7 +84,7 @@ async def submit_archive(
     repo_name: str = Form(...),
     archive: UploadFile = File(...),
     code_entry: str | None = Form(default=None),
-    force_real: bool = Query(default=False),
+    force_real: bool = Query(default=True),
     orchestrator: Orchestrator = Depends(get_orchestrator),
 ) -> SubmitCodeResponse:
     """Accept a zip archive of a small project (code + tests) and run the pipeline.
@@ -154,7 +154,7 @@ async def submit_github(
     branch: str | None = Form(default="main"),
     code_entry: str | None = Form(default=None),
     enable_auto_pr: bool = Form(default=True),
-    force_real: bool = Query(default=False),
+    force_real: bool = Query(default=True),
     orchestrator: Orchestrator = Depends(get_orchestrator),
     settings: Settings = Depends(get_settings),
 ) -> SubmitCodeResponse:
@@ -164,6 +164,11 @@ async def submit_github(
     `/submit-archive`. The `repo_url` should be a public GitHub repo URL such
     as `https://github.com/owner/repo` or `https://github.com/owner/repo.git`.
     """
+    session_token = http_request.session.get("github_token") if hasattr(http_request, "session") else None
+    # Prefer the logged-in user's OAuth token so permissions match the active user.
+    effective_github_token = session_token or settings.github_token
+    requested_enable_auto_pr = enable_auto_pr
+
     # Extract owner/repo from the provided URL (support several common forms)
     # Examples supported:
     #  - https://github.com/owner/repo
@@ -175,51 +180,88 @@ async def submit_github(
         raise HTTPException(status_code=400, detail="repo_url must point to a public GitHub repository (format: github.com/owner/repo)")
     owner = m.group(1)
     repo_name = m.group(2)
-    # Prefer API download when token is available (supports private repos)
-    api_zip_url = f"https://api.github.com/repos/{owner}/{repo_name}/zipball/{branch}"
-
     headers = {"User-Agent": "devops-agent/0.1"}
-    if settings.github_token:
-        headers["Authorization"] = f"token {settings.github_token}"
+    if effective_github_token:
+        headers["Authorization"] = f"token {effective_github_token}"
+
+    requested_branch = (branch or "").strip()
+    branch_candidates: list[str] = []
+    if requested_branch:
+        branch_candidates.append(requested_branch)
+
+    resolved_default_branch: str | None = None
 
     async with httpx.AsyncClient(follow_redirects=True, headers=headers) as client:
-        if settings.github_token:
-            try:
-                repo_meta = await client.get(f"https://api.github.com/repos/{owner}/{repo_name}", timeout=20.0)
-                if repo_meta.status_code == 200:
-                    permissions = repo_meta.json().get("permissions", {})
-                    if not bool(permissions.get("push", False)):
-                        raise HTTPException(
-                            status_code=403,
-                            detail=(
-                                f"Configured GITHUB_TOKEN does not have push access to {owner}/{repo_name}. "
-                                "Use a token with write access to this repository or run against a repository you can push to."
-                            ),
-                        )
-            except httpx.RequestError:
-                # If permission preflight cannot run, continue and let main fetch path decide.
-                pass
-
         try:
-            # If we have a token, try the API zipball endpoint (works for private repos)
-            if settings.github_token:
-                resp = await client.get(api_zip_url, timeout=30.0)
-            else:
-                zip_url = f"https://github.com/{owner}/{repo_name}/archive/refs/heads/{branch}.zip"
-                resp = await client.get(zip_url, timeout=30.0)
-        except httpx.RequestError:
-            raise HTTPException(status_code=400, detail="Failed to fetch repository archive from GitHub")
+            repo_meta = await client.get(f"https://api.github.com/repos/{owner}/{repo_name}", timeout=20.0)
+            if repo_meta.status_code == 200:
+                repo_meta_json = repo_meta.json()
+                resolved_default_branch = str(repo_meta_json.get("default_branch") or "").strip() or None
+                if resolved_default_branch:
+                    branch_candidates.append(resolved_default_branch)
 
-        if resp.status_code != 200:
-            # Fallback to codeload URL (often needed when GitHub serves 3xx/404 differently)
-            codeload_url = f"https://codeload.github.com/{owner}/{repo_name}/zip/{branch}"
+                # Enforce push permission only when auto-PR is enabled.
+                if effective_github_token and requested_enable_auto_pr:
+                    permissions = repo_meta_json.get("permissions", {})
+                    if not bool(permissions.get("push", False)):
+                        # Gracefully degrade to analysis-only mode when token cannot push.
+                        enable_auto_pr = False
+        except httpx.RequestError:
+            # If metadata preflight fails, continue with branch fallbacks.
+            pass
+
+        branch_candidates.extend(["main", "master"])
+        # Preserve order while deduplicating branch names.
+        branch_candidates = list(dict.fromkeys([b for b in branch_candidates if b]))
+
+        resp: httpx.Response | None = None
+        selected_branch: str | None = None
+        last_status_code: int | None = None
+
+        for candidate_branch in branch_candidates:
+            api_zip_url = f"https://api.github.com/repos/{owner}/{repo_name}/zipball/{candidate_branch}"
+            try:
+                # If we have a token, try API zipball first (works for private repos).
+                if effective_github_token:
+                    resp = await client.get(api_zip_url, timeout=30.0)
+                else:
+                    zip_url = f"https://github.com/{owner}/{repo_name}/archive/refs/heads/{candidate_branch}.zip"
+                    resp = await client.get(zip_url, timeout=30.0)
+            except httpx.RequestError:
+                resp = None
+
+            if resp is not None and resp.status_code == 200:
+                selected_branch = candidate_branch
+                break
+
+            if resp is not None:
+                last_status_code = resp.status_code
+
+            # Fallback to codeload URL (often needed when GitHub serves redirects differently).
+            codeload_url = f"https://codeload.github.com/{owner}/{repo_name}/zip/{candidate_branch}"
             try:
                 resp = await client.get(codeload_url, timeout=30.0)
             except httpx.RequestError:
-                raise HTTPException(status_code=400, detail="Failed to fetch repository archive from GitHub (codeload)")
+                resp = None
 
-        if resp.status_code != 200:
-            raise HTTPException(status_code=400, detail=f"Failed to download repo archive: HTTP {resp.status_code}")
+            if resp is not None and resp.status_code == 200:
+                selected_branch = candidate_branch
+                break
+
+            if resp is not None:
+                last_status_code = resp.status_code
+
+        if resp is None or resp.status_code != 200 or not selected_branch:
+            attempted = ", ".join(branch_candidates) if branch_candidates else "none"
+            status_text = str(last_status_code) if last_status_code is not None else "network-error"
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Failed to download repo archive: HTTP {status_text}. "
+                    f"Tried branches: {attempted}. "
+                    "If the repository is private, login with GitHub or configure GITHUB_TOKEN with access."
+                ),
+            )
 
         with tempfile.TemporaryDirectory(prefix="github_repo_") as tmpdir:
             tmp = Path(tmpdir)
@@ -265,7 +307,7 @@ async def submit_github(
                 enable_auto_pr=enable_auto_pr,
                 repo_full_name=f"{owner}/{repo_name}",
                 clone_url=repo_url,
-                branch=branch or "main",
+                branch=selected_branch,
             )
 
             # Optionally force real QA mode for this orchestrator instance
@@ -273,10 +315,6 @@ async def submit_github(
             try:
                 if force_real:
                     orchestrator.settings.qa_mode = "real"
-
-                session_token = None
-                if http_request and hasattr(http_request, "session"):
-                    session_token = http_request.session.get("github_token")
 
                 state = await orchestrator.submit_code(request, github_token=session_token)
             finally:

@@ -41,3 +41,17 @@ class LogEntry(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
 
     pipeline = relationship("PipelineRun", back_populates="logs")
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String, unique=True, nullable=False, index=True)
+    api_key = Column(String, unique=True, nullable=True, index=True)
+    roles = Column(Text, nullable=True)  # JSON string of roles list
+    is_admin = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self) -> str:
+        return f"<User username={self.username} admin={bool(self.is_admin)}>"

@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://redis:6379/0", alias="REDIS_URL")
     agent_memory_enabled: bool = Field(default=False, alias="AGENT_MEMORY_ENABLED")
     retriever_backend: str = Field(default="none", alias="RETRIEVER_BACKEND")
-    qa_mode: str = Field(default="simulated", alias="QA_MODE")
+    qa_mode: str = Field(default="real", alias="QA_MODE")
     qa_timeout_seconds: int = Field(default=30, alias="QA_TIMEOUT_SECONDS")
     auto_redeploy_on_blocked: bool = Field(default=True, alias="AUTO_REDEPLOY_ON_BLOCKED")
     auth_enabled: bool = Field(default=False, alias="AUTH_ENABLED")
@@ -31,9 +31,9 @@ class Settings(BaseSettings):
     github_token: str = Field(default="", alias="GITHUB_TOKEN")
     github_client_id: str = Field(default="", alias="GITHUB_CLIENT_ID")
     github_client_secret: str = Field(default="", alias="GITHUB_CLIENT_SECRET")
-    app_port: int = Field(default=8001, alias="APP_PORT")
+    app_port: int = Field(default=8000, alias="APP_PORT")
     github_redirect_uri: str = Field(
-        default="http://localhost:8001/api/v1/auth/github/callback",
+        default="http://localhost:8000/api/v1/auth/github/callback",
         alias="GITHUB_REDIRECT_URI",
     )
     session_secret_key: str = Field(
@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     oauth_token_expiry_hours: int = Field(default=24, alias="OAUTH_TOKEN_EXPIRY_HOURS")
     sync_database_url: str = Field(default="", alias="SYNC_DATABASE_URL")
     slack_webhook_url: str = Field(default="", alias="SLACK_WEBHOOK_URL")
+    anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
+    anthropic_model: str = Field(default="claude-3-7-sonnet-latest", alias="ANTHROPIC_MODEL")
 
 
 def get_settings() -> Settings:

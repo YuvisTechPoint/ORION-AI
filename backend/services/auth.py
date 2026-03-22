@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from fastapi import HTTPException
 
 from core.config import Settings
+from core.db import SessionLocal
+from models.db_models import User as UserModel
 
 
 @dataclass
@@ -19,12 +21,34 @@ class AuthService:
         self._key_map = self._parse_key_map(settings.auth_api_keys_json)
 
     def authenticate(self, api_key: str | None) -> UserContext:
+        # If auth is disabled, return system/admin context
         if not self.settings.auth_enabled:
             return UserContext(user_id="system", roles=["admin"], api_key="disabled")
 
         if not api_key:
             raise HTTPException(status_code=401, detail="Missing X-API-Key header")
 
+        # Prefer database-backed users when available
+        try:
+            db = SessionLocal()
+            user = db.query(UserModel).filter(UserModel.api_key == api_key).first()
+        except Exception:
+            user = None
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
+
+        if user:
+            # roles stored as JSON string
+            try:
+                roles = json.loads(user.roles) if user.roles else []
+            except Exception:
+                roles = []
+            return UserContext(user_id=user.username or "unknown", roles=roles, api_key=api_key)
+
+        # Fallback to static API keys from settings
         data = self._key_map.get(api_key)
         if data is None:
             raise HTTPException(status_code=401, detail="Invalid API key")

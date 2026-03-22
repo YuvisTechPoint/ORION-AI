@@ -1,12 +1,12 @@
 ﻿[
     {
         "name":  "backend",
-        "pid":  10888,
+        "pid":  5592,
         "port":  8000
     },
     {
         "name":  "frontend",
-        "pid":  16164,
+        "pid":  11296,
         "port":  5173
     }
 ]

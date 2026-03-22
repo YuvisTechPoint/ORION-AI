@@ -146,16 +146,65 @@ async def _fetch_github_workflow_logs_via_gh(repo_full_name: str, branch: str, l
         f"Failed listing workflow runs for {repo_full_name}",
     )
     runs = json.loads(list_output or "[]")
-    if not isinstance(runs, list) or not runs:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No workflow runs found on {repo_full_name} branch {branch_name}. Trigger a GitHub Action first.",
+    if not isinstance(runs, list):
+        runs = []
+
+    # Fallback: some repos only have runs on PR refs or a different default branch.
+    # In that case, use the latest repo-level run instead of failing submit.
+    source_scope = f"branch:{branch_name}"
+    if not runs:
+        fallback_output = await _run_gh_command(
+            [
+                "run",
+                "list",
+                "--repo",
+                repo_full_name,
+                "--limit",
+                str(max(1, min(limit, 10))),
+                "--json",
+                "databaseId,displayTitle,workflowName,status,conclusion,headBranch,url,createdAt",
+            ],
+            f"Failed listing fallback workflow runs for {repo_full_name}",
         )
+        fallback_runs = json.loads(fallback_output or "[]")
+        if isinstance(fallback_runs, list) and fallback_runs:
+            runs = fallback_runs
+            source_scope = "repo:latest"
+
+    if not runs:
+        soft_log = (
+            f"No GitHub Actions workflow runs found for {repo_full_name}. "
+            f"Checked branch={branch_name} and repo-level recent runs. "
+            "Proceeding without workflow log context.\n"
+        )
+        return soft_log, {
+            "repo_full_name": repo_full_name,
+            "branch": branch_name,
+            "run_id": "",
+            "status": "not_found",
+            "conclusion": "",
+            "workflow": "",
+            "url": "",
+            "source_scope": source_scope,
+        }
 
     latest = runs[0] if isinstance(runs[0], dict) else {}
     run_id = latest.get("databaseId")
     if not run_id:
-        raise HTTPException(status_code=400, detail="Unable to resolve workflow run id from GitHub CLI output")
+        soft_log = (
+            f"GitHub Actions run metadata was present but missing databaseId for {repo_full_name}. "
+            "Proceeding without workflow log context.\n"
+        )
+        return soft_log, {
+            "repo_full_name": repo_full_name,
+            "branch": branch_name,
+            "run_id": "",
+            "status": "invalid_run_metadata",
+            "conclusion": "",
+            "workflow": "",
+            "url": "",
+            "source_scope": source_scope,
+        }
 
     logs_text = await _run_gh_command(
         ["run", "view", str(run_id), "--repo", repo_full_name, "--log"],
@@ -169,6 +218,7 @@ async def _fetch_github_workflow_logs_via_gh(repo_full_name: str, branch: str, l
         "conclusion": str(latest.get("conclusion", "")),
         "workflow": str(latest.get("workflowName", "")),
         "url": str(latest.get("url", "")),
+        "source_scope": source_scope,
     }
     return logs_text, metadata
 

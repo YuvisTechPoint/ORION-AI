@@ -12,6 +12,7 @@ Stage = Literal[
     "stress",
     "approval",
     "deployment",
+    "monitoring",
     "blocked",
     "blocked_with_prs_sent",
     "completed",

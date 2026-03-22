@@ -12,7 +12,7 @@ from services.qa_runner import QARunner
 
 
 class FullScanOrchestrator(BaseAgent):
-    """Runs code, security, and QA checks concurrently without early exit."""
+    """Runs code, security, and QA checks sequentially without early exit."""
 
     def __init__(self, llm_client: Any, qa_timeout_seconds: int = 30) -> None:
         super().__init__(llm_client=llm_client, name="full_scan_orchestrator")
@@ -27,16 +27,21 @@ class FullScanOrchestrator(BaseAgent):
     async def execute(self, repo_path: str, diff_text: str, pipeline_run_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         del repo_path, diff_text, pipeline_run_id
 
-        code_task = asyncio.to_thread(self.code_agent.run, payload)
-        security_task = asyncio.to_thread(self.security_agent.run, payload)
-        qa_task = asyncio.to_thread(self._run_qa, payload.get("repo_files") or {})
+        # Execute in deterministic order so each model runs one-after-another.
+        try:
+            code_result = await asyncio.to_thread(self.code_agent.run, payload)
+        except Exception as exc:  # noqa: BLE001
+            code_result = exc
 
-        code_result, security_result, qa_result = await asyncio.gather(
-            code_task,
-            security_task,
-            qa_task,
-            return_exceptions=True,
-        )
+        try:
+            security_result = await asyncio.to_thread(self.security_agent.run, payload)
+        except Exception as exc:  # noqa: BLE001
+            security_result = exc
+
+        try:
+            qa_result = await asyncio.to_thread(self._run_qa, payload.get("repo_files") or {})
+        except Exception as exc:  # noqa: BLE001
+            qa_result = exc
 
         normalized_code = self._normalize_agent_result("code", code_result)
         normalized_security = self._normalize_agent_result("security", security_result)

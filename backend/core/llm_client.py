@@ -22,6 +22,7 @@ class LLMClient:
         self._api_key = settings.llm_api_key
         self._base_url = settings.llm_base_url
         self._model = settings.llm_model
+        self._disabled_after_auth_failure = False
 
     def generate(self, prompt: str, max_retries: int = 3, backoff_seconds: float = 1.0) -> dict[str, Any]:
         """Call the LLM and return structured JSON.
@@ -31,6 +32,19 @@ class LLMClient:
         if not self._api_key:
             LOGGER.debug("LLM_API_KEY not configured — returning deterministic mock output")
             return {"summary": "Mock response (no API key)", "issues": [], "next_action": "continue"}
+
+        if self._disabled_after_auth_failure:
+            return {
+                "summary": "LLM disabled after authorization failure",
+                "issues": [
+                    {
+                        "type": "llm_auth_error",
+                        "severity": "high",
+                        "line": "n/a",
+                        "fix": "Update LLM_API_KEY with a valid key and restart backend",
+                    }
+                ],
+            }
 
         payload: dict[str, Any] = {
             "model": self._model,
@@ -67,6 +81,16 @@ class LLMClient:
                 except Exception:
                     return {"summary": "LLM returned non-JSON content", "value": content}
 
+            except httpx.HTTPStatusError as exc:
+                last_exc = exc
+                status_code = exc.response.status_code if exc.response is not None else None
+                LOGGER.warning("LLM call attempt %s failed: %s", attempt, exc)
+                if status_code in {401, 403}:
+                    self._disabled_after_auth_failure = True
+                    break
+                if attempt < max_retries:
+                    sleep_for = backoff_seconds * (2 ** (attempt - 1))
+                    time.sleep(sleep_for)
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 LOGGER.warning("LLM call attempt %s failed: %s", attempt, exc)

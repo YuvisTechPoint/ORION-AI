@@ -5,40 +5,55 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 const STAGE_KEYS = ["dev", "qa", "stress", "approval", "deployment", "monitoring", "completed"];
 const STAGE_LABELS = ["DEV", "QA", "STRESS", "APPROVAL", "DEPLOYMENT", "MONITORING", "COMPLETED"];
 
-function StageTimeline({ currentStage, status }) {
+function buildStageStates(history, currentStage, status) {
+  const states = Object.fromEntries(STAGE_KEYS.map((k) => [k, "pending"]));
+  const failRe = /(failed|fail|blocked|denied|error|skipped)/i;
+
+  (history || []).forEach((entry) => {
+    const stage = (entry?.stage || "").toLowerCase();
+    if (!Object.prototype.hasOwnProperty.call(states, stage)) {
+      return;
+    }
+    const msg = String(entry?.message || "");
+    if (failRe.test(msg)) {
+      states[stage] = "failed";
+      return;
+    }
+    if (states[stage] !== "failed") {
+      states[stage] = "passed";
+    }
+  });
+
+  const cur = (currentStage || "").toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(states, cur) && states[cur] === "pending") {
+    states[cur] = status === "running" ? "running" : "pending";
+  }
+  if ((status || "").toLowerCase() === "completed") {
+    states.completed = "passed";
+  }
+
+  return states;
+}
+
+function StageTimeline({ currentStage, status, history }) {
+  const states = buildStageStates(history, currentStage, status);
   const norm = (s) => (s || "").toLowerCase();
-  const cur = STAGE_KEYS.indexOf(norm(currentStage));
-  const currentIdx = cur >= 0 ? cur : -1;
   const lastIdx = STAGE_KEYS.length - 1;
-  const st = (status || "").toLowerCase();
 
   return (
     <div className="stage-timeline">
       {STAGE_KEYS.map((key, i) => {
-        let nodeState = "pending";
-        if (currentIdx >= 0 && st) {
-          if (i < currentIdx) {
-            nodeState = "passed";
-          } else if (i > currentIdx) {
-            nodeState = "pending";
-          } else {
-            if (st === "failed") nodeState = "failed";
-            else if (st === "blocked") nodeState = "blocked";
-            else if (st === "running") nodeState = "running";
-            else if (st === "completed") nodeState = "passed";
-            else nodeState = "running";
-          }
-        }
+        const nodeState = states[key] || "pending";
 
         const chip =
           nodeState === "passed"
-            ? "OK"
+            ? "\u2713"
             : nodeState === "running"
               ? "RUN"
               : nodeState === "failed"
-                ? "FAIL"
+                ? "\u2717"
                 : nodeState === "blocked"
-                  ? "HOLD"
+                  ? "\u2717"
                   : "—";
 
         const chipClass =
@@ -122,6 +137,17 @@ export default function App() {
   const [diffText, setDiffText] = useState("- insecure_call()\n+ secure_call()");
   const [logsText, setLogsText] = useState("");
   const [deploymentApiKey, setDeploymentApiKey] = useState("");
+  const [submitMultimodalModes, setSubmitMultimodalModes] = useState([]);
+  const [submitMultimodalText, setSubmitMultimodalText] = useState("");
+
+  function toggleSubmitMode(mode) {
+    setSubmitMultimodalModes((prev) => {
+      if (prev.includes(mode)) {
+        return prev.filter((x) => x !== mode);
+      }
+      return [...prev, mode];
+    });
+  }
 
   const [state, setState] = useState(null);
   const [monitoring, setMonitoring] = useState(null);
@@ -174,7 +200,11 @@ export default function App() {
       const fd = new FormData();
       fd.append("repo_url", normalized);
       fd.append("branch", "main");
-      fd.append("enable_auto_pr", "false");
+      fd.append("enable_auto_pr", "true");
+      fd.append("multimodal_modes", submitMultimodalModes.join(","));
+      if (submitMultimodalModes.length > 0 && submitMultimodalText.trim()) {
+        fd.append("multimodal_text", submitMultimodalText.trim());
+      }
       const resp = await fetch(`${API_BASE}/submit-github?force_real=true`, {
         method: "POST",
         body: fd,
@@ -623,6 +653,38 @@ export default function App() {
                 placeholder="https://github.com/owner/repo"
               />
             </div>
+            <div className="field-group">
+              <label>Select multimodal analyzers to run (optional)</label>
+              <div className="field-group field-group--checkbox">
+                <label className="label-inline">
+                  <input
+                    type="checkbox"
+                    checked={submitMultimodalModes.includes("git_logs")}
+                    onChange={() => toggleSubmitMode("git_logs")}
+                  />
+                  Git Log Analyzer
+                </label>
+                <label className="label-inline">
+                  <input
+                    type="checkbox"
+                    checked={submitMultimodalModes.includes("payment")}
+                    onChange={() => toggleSubmitMode("payment")}
+                  />
+                  Payment Analyzer
+                </label>
+              </div>
+            </div>
+            {submitMultimodalModes.length > 0 && (
+              <div className="field-group">
+                <label>Multimodal context (logs/notes)</label>
+                <textarea
+                  rows={4}
+                  value={submitMultimodalText}
+                  onChange={(e) => setSubmitMultimodalText(e.target.value)}
+                  placeholder="Paste runtime logs or context to analyze alongside pipeline checks"
+                />
+              </div>
+            )}
             <div className="field-group field-group--actions">
               <button type="button" className="btn-primary" onClick={submitGithub} disabled={loading || !repoUrl}>
                 Fetch GitHub Repo &amp; Run
@@ -673,7 +735,7 @@ export default function App() {
                 </div>
               </>
             )}
-            <StageTimeline currentStage={state?.current_stage} status={state?.status} />
+            <StageTimeline currentStage={state?.current_stage} status={state?.status} history={state?.history} />
           </article>
 
           <article className="panel panel-card wide">

@@ -30,7 +30,11 @@ class IssueBundle:
     branch_name: str
     pr_title: str
     pr_body: str
+    error_label: str | None = None
+    issue_id: str | None = None
+    severity: str | None = None
     pr_number: int | None = None
+    pr_url: str | None = None
 
 
 class AutoPRService:
@@ -57,12 +61,50 @@ class AutoPRService:
         self.git_service = GitService(clone_url)
         self.anthropic_client: Anthropic | None = None
 
+    async def _ensure_success(self, response: httpx.Response, context: str) -> None:
+        if 200 <= response.status_code < 300:
+            return
+        body = response.text or ""
+        message = ""
+        try:
+            payload = response.json()
+            if isinstance(payload, dict):
+                message = str(payload.get("message") or "")
+        except Exception:  # noqa: BLE001
+            message = ""
+        detail = message or body or "GitHub API request failed"
+        raise RuntimeError(f"{context}: HTTP {response.status_code} - {detail}")
+
+    async def _head_branch_exists(self, branch_name: str) -> bool:
+        response = await self.client.get(f"/repos/{self.repo_full_name}/git/ref/heads/{branch_name}")
+        return response.status_code == 200
+
+    async def _branch_has_diff(self, base_branch: str, head_branch: str) -> bool:
+        compare = await self.client.get(f"/repos/{self.repo_full_name}/compare/{base_branch}...{head_branch}")
+        await self._ensure_success(compare, "GitHub compare check failed")
+        payload = compare.json()
+        ahead_by = int(payload.get("ahead_by", 0)) if isinstance(payload, dict) else 0
+        return ahead_by > 0
+
     async def verify_permissions(self) -> None:
-        await validate_github_token(self.github_token)
+        try:
+            await validate_github_token(self.github_token)
+        except Exception as exc:  # noqa: BLE001
+            raise PermissionError(f"GitHub token validation failed: {exc}") from exc
+
         scopes = get_token_scopes(self.github_token)
-        if "repo" not in scopes:
+        if scopes and "repo" not in scopes:
             raise PermissionError(
                 "GitHub token missing 'repo' scope — re-login at /api/v1/auth/github to grant repository access"
+            )
+
+        repo_resp = await self.client.get(f"/repos/{self.repo_full_name}")
+        await self._ensure_success(repo_resp, f"Failed loading repository {self.repo_full_name}")
+        repo_data = repo_resp.json() if repo_resp.headers.get("content-type", "").startswith("application/json") else {}
+        permissions = repo_data.get("permissions", {}) if isinstance(repo_data, dict) else {}
+        if permissions and not bool(permissions.get("push", False)):
+            raise PermissionError(
+                f"Token does not have push access to {self.repo_full_name}; cannot create branches/PRs"
             )
 
     @staticmethod
@@ -95,6 +137,9 @@ class AutoPRService:
         category: str,
         anthropic_client: Any,
     ) -> list[dict[str, Any]]:
+        if anthropic_client is None:
+            raise ValueError("Anthropic client is required for generate_fix_patches")
+
         file_to_issues: dict[str, list[dict[str, Any]]] = {}
         for issue in issues:
             file_path = self._issue_file_path(issue)
@@ -138,17 +183,32 @@ class AutoPRService:
                     content_text = getattr(first_block, "text", "") if first_block else ""
 
                 parsed = json.loads(content_text)
-                fixed_content = parsed.get("fixed_content") if isinstance(parsed, dict) else ""
+                if not isinstance(parsed, dict):
+                    raise ValueError("Claude returned non-object JSON payload")
+
+                file_path_value = parsed.get("file_path")
+                fixed_content = parsed.get("fixed_content")
+                explanation = parsed.get("explanation", "Automated fix generated")
+                changes_made = parsed.get("changes_made", [])
+
+                if not isinstance(file_path_value, str) or not file_path_value.strip():
+                    raise ValueError("Claude response missing file_path")
                 if not isinstance(fixed_content, str) or not fixed_content.strip():
                     raise ValueError("Claude returned empty fixed_content")
+                if not isinstance(explanation, str):
+                    raise ValueError("Claude explanation must be a string")
+                if not isinstance(changes_made, list):
+                    changes_made = []
+                else:
+                    changes_made = [str(item) for item in changes_made]
 
                 patches.append(
                     {
                         "file_path": file_path,
                         "original_content": original_content,
                         "fixed_content": fixed_content,
-                        "explanation": parsed.get("explanation", "Automated fix generated"),
-                        "changes_made": parsed.get("changes_made", []),
+                        "explanation": explanation,
+                        "changes_made": changes_made,
                     }
                 )
             except Exception as exc:  # noqa: BLE001
@@ -165,10 +225,23 @@ class AutoPRService:
 
         return patches
 
+    @staticmethod
+    def _normalize_error_label(issue: dict[str, Any]) -> str:
+        raw = str(
+            issue.get("rule_id")
+            or issue.get("rule")
+            or issue.get("label")
+            or issue.get("type")
+            or "issue"
+        )
+        raw = raw.strip().lower().replace(" ", "-").replace("_", "-")
+        slug = "".join(ch if (ch.isalnum() or ch == "-") else "-" for ch in raw).strip("-")
+        return slug or "issue"
+
     async def create_branch_with_fixes(self, bundle: IssueBundle, run_id: str) -> str:
         try:
             head_response = await self.client.get(f"/repos/{self.repo_full_name}/git/ref/heads/{self.base_branch}")
-            head_response.raise_for_status()
+            await self._ensure_success(head_response, f"Base branch lookup failed ({self.base_branch})")
             head_sha = head_response.json()["object"]["sha"]
 
             branch_name = bundle.branch_name
@@ -179,7 +252,7 @@ class AutoPRService:
                 bundle.branch_name = branch_name
                 create_payload["ref"] = f"refs/heads/{branch_name}"
                 create_response = await self.client.post(f"/repos/{self.repo_full_name}/git/refs", json=create_payload)
-            create_response.raise_for_status()
+            await self._ensure_success(create_response, f"Failed creating branch {branch_name}")
 
             for patch in bundle.file_patches:
                 file_path = patch["file_path"]
@@ -195,7 +268,7 @@ class AutoPRService:
                 if file_response.status_code == 200:
                     file_sha = file_response.json().get("sha")
                 elif file_response.status_code != 404:
-                    file_response.raise_for_status()
+                    await self._ensure_success(file_response, f"Failed reading {file_path} on {bundle.branch_name}")
 
                 commit_payload = {
                     "message": self.build_commit_message(bundle.category, issue_type, file_path),
@@ -208,14 +281,13 @@ class AutoPRService:
                     f"/repos/{self.repo_full_name}/contents/{file_path}",
                     json=commit_payload,
                 )
-                update_response.raise_for_status()
+                await self._ensure_success(update_response, f"Failed committing {file_path} to {bundle.branch_name}")
 
             self.created_branches.append(bundle.branch_name)
             return bundle.branch_name
-        except httpx.HTTPStatusError as exc:
-            response_body = exc.response.text if exc.response is not None else ""
-            logger.error("GitHub API error while creating branch/fixes: %s", response_body)
-            raise RuntimeError(f"Failed creating branch or committing fixes for {bundle.category}: {response_body}") from exc
+        except Exception as exc:  # noqa: BLE001
+            logger.error("GitHub API error while creating branch/fixes: %s", exc)
+            raise RuntimeError(f"Failed creating branch or committing fixes for {bundle.category}: {exc}") from exc
 
     def _build_pr_body(self, bundle: IssueBundle, run_id: str) -> str:
         rows: list[str] = ["| File | Line | Issue Type | Fix Applied |", "|---|---:|---|---|"]
@@ -241,6 +313,21 @@ class AutoPRService:
         )
 
     async def create_pr(self, bundle: IssueBundle) -> int:
+        if not (bundle.pr_title or "").strip():
+            bundle.pr_title = f"fix({bundle.category}): automated remediation"
+        if not (bundle.pr_body or "").strip():
+            bundle.pr_body = "Automated remediation from ORION pipeline."
+
+        head_exists = await self._head_branch_exists(bundle.branch_name)
+        if not head_exists:
+            raise RuntimeError(f"Cannot create PR: head branch does not exist ({bundle.branch_name})")
+
+        has_diff = await self._branch_has_diff(self.base_branch, bundle.branch_name)
+        if not has_diff:
+            raise RuntimeError(
+                f"Cannot create PR: no commit difference between head {bundle.branch_name} and base {self.base_branch}"
+            )
+
         payload = {
             "title": bundle.pr_title,
             "body": bundle.pr_body,
@@ -249,21 +336,49 @@ class AutoPRService:
             "maintainer_can_modify": True,
         }
         response = await self.client.post(f"/repos/{self.repo_full_name}/pulls", json=payload)
-        response.raise_for_status()
-        pr_number = int(response.json()["number"])
+        await self._ensure_success(response, f"Failed creating PR for {bundle.branch_name}")
+        pr_data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+        pr_number = int(pr_data["number"])
         bundle.pr_number = pr_number
+        bundle.pr_url = str(pr_data.get("html_url", ""))
         return pr_number
 
-    def _build_issue_bundle(self, category: str, issues: list[dict[str, Any]], run_id: str) -> IssueBundle:
+    def _build_group_bundle(
+        self,
+        category: str,
+        error_label: str,
+        issues: list[dict[str, Any]],
+        run_id: str,
+    ) -> IssueBundle:
         sanitized = category.replace("_", "-")
+        slug_label = "".join(ch if (ch.isalnum() or ch == "-") else "-" for ch in error_label.strip().lower()).strip("-")
+        slug_label = slug_label or "issue"
+
+        # Derive a representative severity for the bundle (highest severity wins).
+        severity_order = {"low": 0, "medium": 1, "high": 2}
+        resolved_severity = "unknown"
+        best_score = -1
+        for issue in issues:
+            sev = str(issue.get("severity", "unknown")).lower()
+            score = severity_order.get(sev, -1)
+            if score > best_score:
+                best_score = score
+                resolved_severity = sev
+
         suffix = f"-{run_id[:6]}" if run_id else ""
+        branch_name = f"orion/{sanitized}/{slug_label}{suffix}"
+        pr_title = f"Fix {sanitized}: {error_label} findings"
+
         return IssueBundle(
             category=sanitized,
-            issues=issues,
+            issues=list(issues),
             file_patches=[],
-            branch_name=f"orion/{sanitized}-fixes{suffix}",
-            pr_title=f"fix({sanitized}): automated ORION remediation",
+            branch_name=branch_name,
+            pr_title=pr_title,
             pr_body="",
+            error_label=error_label,
+            issue_id=slug_label,
+            severity=resolved_severity,
         )
 
     def _group_issues_by_category(self, combined_issues: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
@@ -286,7 +401,13 @@ class AutoPRService:
 
         return grouped
 
-    def _fallback_report_patch(self, category: str, issues: list[dict[str, Any]], run_id: str) -> dict[str, Any]:
+    def _fallback_report_patch(
+        self,
+        category: str,
+        issues: list[dict[str, Any]],
+        run_id: str,
+        issue_id: str | None = None,
+    ) -> dict[str, Any]:
         lines = [
             "# ORION Auto-PR Report",
             "",
@@ -311,7 +432,7 @@ class AutoPRService:
 
         content = "\n".join(lines).strip() + "\n"
         return {
-            "file_path": f"orion_reports/{category}_run_{run_id[:8]}.md",
+            "file_path": f"orion_reports/{category}_{issue_id or 'issue'}_run_{run_id[:8]}.md",
             "original_content": "",
             "fixed_content": content,
             "explanation": "Fallback report generated because no direct file patch was available.",
@@ -327,34 +448,62 @@ class AutoPRService:
     ) -> list[IssueBundle]:
         await self.verify_permissions()
         grouped = self._group_issues_by_category(combined_issues)
-        bundles: list[IssueBundle] = []
+        per_group_bundles: list[IssueBundle] = []
 
-        categories = [cat for cat, issues in grouped.items() if issues]
-        if not categories:
-            return bundles
+        for category, issues in grouped.items():
+            if not issues:
+                continue
 
-        patch_tasks = [self.generate_fix_patches(grouped[cat], repo_path, cat, anthropic_client) for cat in categories]
-        patch_sets = await asyncio.gather(*patch_tasks)
+            # Refine grouping: within each category, group by normalized error label/rule-id.
+            label_to_issues: dict[str, list[dict[str, Any]]] = {}
+            label_display: dict[str, str] = {}
+            for issue in issues:
+                if not isinstance(issue, dict):
+                    continue
+                label = self._normalize_error_label(issue)
+                label_to_issues.setdefault(label, []).append(issue)
+                if label not in label_display:
+                    label_display[label] = str(issue.get("type") or issue.get("rule_id") or label)
 
-        for category, patches in zip(categories, patch_sets):
-            bundle = self._build_issue_bundle(category, grouped[category], run_id)
-            bundle.file_patches = [patch for patch in patches if isinstance(patch, dict) and patch.get("file_path")]
-            if not bundle.file_patches:
-                logger.warning("No file patches generated for %s; using fallback report patch", category)
-                bundle.file_patches = [self._fallback_report_patch(category=category, issues=grouped[category], run_id=run_id)]
-            bundle.pr_body = self._build_pr_body(bundle, run_id)
-            bundles.append(bundle)
+            for label, grouped_issues in label_to_issues.items():
+                if not grouped_issues:
+                    continue
 
-        if not bundles:
+                bundle = self._build_group_bundle(category, label_display.get(label, label), grouped_issues, run_id)
+                patches = await self.generate_fix_patches(grouped_issues, repo_path, category, anthropic_client)
+                bundle.file_patches = [patch for patch in patches if isinstance(patch, dict) and patch.get("file_path")]
+                if not bundle.file_patches:
+                    logger.warning(
+                        "No file patch generated for %s group %s; using fallback report patch",
+                        category,
+                        bundle.issue_id,
+                    )
+                    bundle.file_patches = [
+                        self._fallback_report_patch(
+                            category=category,
+                            issues=grouped_issues,
+                            run_id=run_id,
+                            issue_id=bundle.issue_id,
+                        )
+                    ]
+                bundle.pr_body = self._build_pr_body(bundle, run_id)
+                per_group_bundles.append(bundle)
+
+        if not per_group_bundles:
             return []
 
         created_bundles: list[IssueBundle] = []
-        for bundle in bundles:
+        for bundle in per_group_bundles:
             try:
                 await self.create_branch_with_fixes(bundle, run_id)
                 created_bundles.append(bundle)
             except Exception as exc:  # noqa: BLE001
-                logger.error("Skipping PR creation for %s bundle due to branch/commit failure: %s", bundle.category, exc)
+                logger.error(
+                    "Skipping PR creation for %s issue %s due to branch/commit failure: %s",
+                    bundle.category,
+                    bundle.issue_id,
+                    exc,
+                )
 
         if not created_bundles:
             return []

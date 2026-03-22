@@ -20,7 +20,7 @@ class Settings(BaseSettings):
 
     database_url: str = Field(default="sqlite:///./devops_platform.db", alias="DATABASE_URL")
     queue_backend: str = Field(default="memory", alias="QUEUE_BACKEND")
-    redis_url: str = Field(default="redis://redis:6379/0", alias="REDIS_URL")
+    redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
     agent_memory_enabled: bool = Field(default=False, alias="AGENT_MEMORY_ENABLED")
     retriever_backend: str = Field(default="none", alias="RETRIEVER_BACKEND")
     qa_mode: str = Field(default="real", alias="QA_MODE")

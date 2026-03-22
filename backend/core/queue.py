@@ -8,8 +8,12 @@ LOGGER = logging.getLogger(__name__)
 
 try:
     from redis.asyncio import Redis
+    from redis.exceptions import ConnectionError as RedisConnectionError
+    from redis.exceptions import RedisError
 except Exception:  # noqa: BLE001
     Redis = None
+    RedisConnectionError = Exception
+    RedisError = Exception
 
 
 class EventBus(Protocol):
@@ -49,11 +53,23 @@ class RedisEventBus:
         self._client = Redis.from_url(redis_url, decode_responses=True)
 
     async def publish(self, topic: str, payload: dict[str, Any]) -> None:
-        await self._client.rpush(topic, json.dumps(payload))
+        try:
+            await self._client.rpush(topic, json.dumps(payload))
+        except (RedisConnectionError, RedisError) as exc:
+            LOGGER.warning("Redis publish failed topic=%s error=%s", topic, exc)
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("Redis publish failed topic=%s error=%s", topic, exc)
 
     async def consume(self, topic: str, timeout: float | None = None) -> dict[str, Any]:
         redis_timeout = 0 if timeout is None else max(1, int(timeout))
-        item = await self._client.blpop(topic, timeout=redis_timeout)
+        try:
+            item = await self._client.blpop(topic, timeout=redis_timeout)
+        except (RedisConnectionError, RedisError) as exc:
+            LOGGER.warning("Redis consume failed topic=%s error=%s", topic, exc)
+            return {}
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("Redis consume failed topic=%s error=%s", topic, exc)
+            return {}
         if not item:
             return {}
         _, raw = item

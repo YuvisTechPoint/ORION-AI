@@ -67,6 +67,9 @@ class Orchestrator:
 
     async def submit_code(self, request: SubmitCodeRequest, github_token: str | None = None) -> PipelineState:
         state = PipelineState(repo_name=request.repo_name)
+        blocker_reasons: list[str] = []
+        opened_pr_bundles: list[Any] = []
+
         self._record(state, "dev", "Code submitted")
         await self._publish_pipeline_event(state, "Code submitted")
 
@@ -89,63 +92,87 @@ class Orchestrator:
         self._record(state, "dev", "Full scan completed")
         await self._publish_pipeline_event(state, "Full scan completed")
 
-        if request.enable_auto_pr:
-            if self._has_non_passing_findings(combined_issues):
-                candidate_token = github_token or self._resolve_github_token()
-                repo_path = self._materialize_repo_snapshot(request)
-                try:
-                    auto_pr_service = AutoPRService(
-                        github_token=candidate_token,
-                        repo_full_name=request.repo_full_name or request.repo_name,
-                        clone_url=request.clone_url or "",
-                        base_branch=request.branch,
-                    )
-                except ValueError as exc:
-                    state.current_stage = "blocked"
-                    state.status = "blocked"
-                    missing_token_message = f"Pipeline blocked: {exc}"
-                    state.artifacts["auto_pr_registry"] = {
-                        "branches": [],
-                        "reason": "github-token-not-configured",
-                    }
-                    self._record(state, "blocked", missing_token_message)
-                    await self._publish_pipeline_event(state, missing_token_message)
-                    self.state_store.upsert(state)
-                    return state
+        if request.enable_auto_pr and self._has_non_passing_findings(combined_issues):
+            repo_path = self._materialize_repo_snapshot(request)
+            token_candidates = [github_token, self._resolve_github_token()]
+            seen_tokens: set[str] = set()
+            effective_tokens: list[str] = []
+            for token in token_candidates:
+                t = (token or "").strip()
+                if not t or t in seen_tokens:
+                    continue
+                seen_tokens.add(t)
+                effective_tokens.append(t)
 
-                try:
-                    anthropic_key = self.settings.llm_api_key
-                    anthropic_client = Anthropic(api_key=anthropic_key) if anthropic_key else None
-                    bundles = await auto_pr_service.open_all_prs(
-                        combined_issues=combined_issues,
-                        repo_path=repo_path,
-                        run_id=state.pipeline_id,
-                        anthropic_client=anthropic_client,
-                    )
+            if not effective_tokens:
+                message = "Auto PR skipped: no GitHub token available for PR creation"
+                blocker_reasons.append(message)
+                state.artifacts["auto_pr_registry"] = {
+                    "branches": [],
+                    "reason": "github-token-not-configured",
+                }
+                self._record(state, "dev", message)
+                await self._publish_pipeline_event(state, message)
+            else:
+                anthropic_key = self.settings.llm_api_key
+                anthropic_client = Anthropic(api_key=anthropic_key) if anthropic_key else None
+                token_errors: list[str] = []
 
-                    state.artifacts["auto_pr_registry"] = {
-                        "branches": [
-                            {
-                                "branch_name": bundle.branch_name,
-                                "pr_number": bundle.pr_number,
-                                "category": bundle.category,
-                                "merged": False,
-                                "deleted": False,
-                            }
-                            for bundle in bundles
-                        ],
-                        "reason": "prs-opened" if bundles else "no-prs-opened",
-                    }
-                    state.current_stage = "blocked_with_prs_sent"
-                    state.status = "blocked_with_prs_sent"
-                    pr_urls = self._build_pr_urls(request.repo_full_name or request.repo_name, bundles)
-                    blocked_message = f"Pipeline blocked. {len(bundles)} fix PRs opened: {pr_urls}"
-                    self._record(state, "blocked_with_prs_sent", blocked_message)
-                    await self._publish_pipeline_event(state, blocked_message)
-                    self.state_store.upsert(state)
-                    return state
-                finally:
-                    await auto_pr_service.close()
+                for token in effective_tokens:
+                    try:
+                        auto_pr_service = AutoPRService(
+                            github_token=token,
+                            repo_full_name=request.repo_full_name or request.repo_name,
+                            clone_url=request.clone_url or "",
+                            base_branch=request.branch,
+                        )
+                    except ValueError as exc:
+                        token_errors.append(str(exc))
+                        continue
+
+                    try:
+                        opened_pr_bundles = await auto_pr_service.open_all_prs(
+                            combined_issues=combined_issues,
+                            repo_path=repo_path,
+                            run_id=state.pipeline_id,
+                            anthropic_client=anthropic_client,
+                        )
+                        if opened_pr_bundles:
+                            break
+                    except Exception as exc:  # noqa: BLE001
+                        token_errors.append(str(exc))
+                    finally:
+                        await auto_pr_service.close()
+
+                state.artifacts["auto_pr_registry"] = {
+                    "branches": [
+                        {
+                            "issue_id": getattr(bundle, "issue_id", None),
+                            "error_label": getattr(bundle, "error_label", None),
+                            "branch_name": bundle.branch_name,
+                            "pr_number": bundle.pr_number,
+                            "pr_url": getattr(bundle, "pr_url", None),
+                            "category": bundle.category,
+                            "severity": getattr(bundle, "severity", "unknown"),
+                            "merged": False,
+                            "deleted": False,
+                        }
+                        for bundle in opened_pr_bundles
+                    ],
+                    "reason": "prs-opened" if opened_pr_bundles else "no-prs-opened",
+                }
+
+                if opened_pr_bundles:
+                    pr_urls = self._build_pr_urls(request.repo_full_name or request.repo_name, opened_pr_bundles)
+                    pr_message = f"Opened {len(opened_pr_bundles)} fix PRs: {pr_urls}"
+                    self._record(state, "dev", pr_message)
+                    await self._publish_pipeline_event(state, pr_message)
+                else:
+                    detail = token_errors[0] if token_errors else "No fix PRs were created from detected issues"
+                    message = f"Auto PR processing error: {detail}"
+                    blocker_reasons.append(message)
+                    self._record(state, "dev", message)
+                    await self._publish_pipeline_event(state, message)
 
         code_raw = combined_issues.get("code_issues", {}) if isinstance(combined_issues, dict) else {}
         code_result = self._safe_validate(CodeAnalysisResult, code_raw, fallback={"summary": "analysis unavailable"})
@@ -161,14 +188,10 @@ class Orchestrator:
 
         high_security = any(issue.severity == "high" for issue in security_result.issues)
         if high_security or security_result.blocked:
-            state.current_stage = "blocked"
-            state.status = "blocked"
             blocked_message = "Pipeline blocked by security findings"
-            self._record(state, "blocked", blocked_message)
+            blocker_reasons.append(blocked_message)
+            self._record(state, "dev", blocked_message)
             await self._publish_pipeline_event(state, blocked_message)
-            await self._attempt_auto_redeployment(state, blocked_message)
-            self.state_store.upsert(state)
-            return state
 
         security_gate = self._pipeline_decision_for_gate(
             current_stage="dev",
@@ -182,14 +205,10 @@ class Orchestrator:
         )
         self._store_pipeline_decision(state, "security_gate", security_gate)
         if security_gate.next_stage == "blocked" or not security_gate.approved:
-            state.current_stage = "blocked"
-            state.status = "blocked"
             blocked_message = f"Pipeline control blocked after security gate: {security_gate.reason}"
-            self._record(state, "blocked", blocked_message)
+            blocker_reasons.append(blocked_message)
+            self._record(state, "qa", blocked_message)
             await self._publish_pipeline_event(state, blocked_message)
-            await self._attempt_auto_redeployment(state, blocked_message)
-            self.state_store.upsert(state)
-            return state
 
         state.current_stage = "qa"
         qa_details = combined_issues.get("qa_issues", {}) if isinstance(combined_issues, dict) else {}
@@ -200,12 +219,9 @@ class Orchestrator:
         self._record(state, "qa", f"QA result: {'pass' if qa_passed else 'fail'}")
         await self._publish_pipeline_event(state, f"QA result: {'pass' if qa_passed else 'fail'}")
         if not qa_passed:
-            state.current_stage = "failed"
-            state.status = "failed"
-            self._record(state, "failed", "QA checks failed")
+            blocker_reasons.append("QA checks failed")
+            self._record(state, "qa", "QA checks failed")
             await self._publish_pipeline_event(state, "QA checks failed")
-            self.state_store.upsert(state)
-            return state
 
         qa_gate = self._pipeline_decision_for_gate(
             current_stage="qa",
@@ -220,26 +236,19 @@ class Orchestrator:
         )
         self._store_pipeline_decision(state, "qa_gate", qa_gate)
         if qa_gate.next_stage == "blocked" or not qa_gate.approved:
-            state.current_stage = "blocked"
-            state.status = "blocked"
             blocked_message = f"Pipeline control blocked after QA gate: {qa_gate.reason}"
-            self._record(state, "blocked", blocked_message)
+            blocker_reasons.append(blocked_message)
+            self._record(state, "stress", blocked_message)
             await self._publish_pipeline_event(state, blocked_message)
-            await self._attempt_auto_redeployment(state, blocked_message)
-            self.state_store.upsert(state)
-            return state
 
         state.current_stage = "stress"
         stress_passed = self._simulate_stress(code_result, security_result)
         self._record(state, "stress", f"Stress test result: {'pass' if stress_passed else 'fail'}")
         await self._publish_pipeline_event(state, f"Stress test result: {'pass' if stress_passed else 'fail'}")
         if not stress_passed:
-            state.current_stage = "failed"
-            state.status = "failed"
-            self._record(state, "failed", "Stress checks failed")
+            blocker_reasons.append("Stress checks failed")
+            self._record(state, "stress", "Stress checks failed")
             await self._publish_pipeline_event(state, "Stress checks failed")
-            self.state_store.upsert(state)
-            return state
 
         stress_gate = self._pipeline_decision_for_gate(
             current_stage="stress",
@@ -254,20 +263,16 @@ class Orchestrator:
         )
         self._store_pipeline_decision(state, "stress_gate", stress_gate)
         if stress_gate.next_stage == "blocked" or not stress_gate.approved:
-            state.current_stage = "blocked"
-            state.status = "blocked"
             blocked_message = f"Pipeline control blocked after stress gate: {stress_gate.reason}"
-            self._record(state, "blocked", blocked_message)
+            blocker_reasons.append(blocked_message)
+            self._record(state, "approval", blocked_message)
             await self._publish_pipeline_event(state, blocked_message)
-            await self._attempt_auto_redeployment(state, blocked_message)
-            self.state_store.upsert(state)
-            return state
 
         state.current_stage = "approval"
         decision = self._pipeline_decision_for_gate(
             current_stage="approval",
-            default_next="blocked",
-            default_approved=False,
+            default_next="deployment",
+            default_approved=True,
             context={
                 "code_analysis": code_result.model_dump(),
                 "security": security_result.model_dump(),
@@ -279,18 +284,56 @@ class Orchestrator:
         await self._publish_pipeline_event(state, decision.reason)
 
         if not decision.approved and decision.next_stage != "deployment":
-            state.current_stage = "blocked"
-            state.status = "blocked"
             denied_message = f"Approval gate denied: {decision.reason}"
-            self._record(state, "blocked", denied_message)
+            blocker_reasons.append(denied_message)
+            self._record(state, "approval", denied_message)
             await self._publish_pipeline_event(state, denied_message)
-            await self._attempt_auto_redeployment(state, denied_message)
-            self.state_store.upsert(state)
-            return state
 
-        deployment = self._execute_deployment(state)
+        if blocker_reasons:
+            state.current_stage = "deployment"
+            deployment = DeploymentResult(
+                status="failed",
+                reason="Deployment skipped due to unresolved blockers in earlier stages.",
+                environment="staging",
+            )
+            self._record(state, "deployment", deployment.reason)
+            await self._publish_pipeline_event(state, deployment.reason)
+        else:
+            deployment = self._execute_deployment(state)
+
         state.artifacts["deployment"] = deployment.model_dump()
-        if deployment.status == "deployed":
+
+        state.current_stage = "monitoring"
+        monitoring_input = self._build_monitoring_input(state)
+        monitoring_result = self.analyze_logs(
+            AnalyzeLogsRequest(
+                pipeline_id=state.pipeline_id,
+                logs=monitoring_input,
+            )
+        )
+        state.artifacts["monitoring"] = monitoring_result.model_dump()
+        self._record(state, "monitoring", monitoring_result.summary)
+        await self._publish_pipeline_event(state, monitoring_result.summary)
+
+        state.artifacts["pipeline_summary"] = {
+            "blockers": blocker_reasons,
+            "auto_pr_count": len(opened_pr_bundles),
+            "deployment_status": deployment.status,
+            "monitoring_summary": monitoring_result.summary,
+        }
+
+        if blocker_reasons:
+            if opened_pr_bundles:
+                state.current_stage = "blocked_with_prs_sent"
+                state.status = "blocked_with_prs_sent"
+                message = "Pipeline finished with blockers; auto-fix PRs were generated."
+            else:
+                state.current_stage = "blocked"
+                state.status = "blocked"
+                message = "Pipeline finished with blockers and needs manual remediation."
+            self._record(state, state.current_stage, message)
+            await self._publish_pipeline_event(state, message)
+        elif deployment.status == "deployed":
             state.current_stage = "completed"
             state.status = "completed"
             self._record(state, "completed", deployment.reason)
@@ -308,6 +351,19 @@ class Orchestrator:
 
         self.state_store.upsert(state)
         return state
+
+    def _build_monitoring_input(self, state: PipelineState) -> str:
+        security = state.artifacts.get("security", {})
+        code = state.artifacts.get("code_analysis", {})
+        summary_lines = [
+            f"pipeline_id={state.pipeline_id}",
+            f"repo_name={state.repo_name}",
+            f"current_stage={state.current_stage}",
+            f"status={state.status}",
+            f"security_summary={security.get('summary', '') if isinstance(security, dict) else ''}",
+            f"code_summary={code.get('summary', '') if isinstance(code, dict) else ''}",
+        ]
+        return "\n".join(summary_lines)
 
     def _resolve_github_token(self) -> str:
         token = (self.settings.github_token or "").strip()
@@ -484,8 +540,12 @@ class Orchestrator:
 
     async def wait_pipeline_event(self, pipeline_id: str, timeout: float = 1.0) -> dict[str, Any]:
         topic = self._pipeline_topic(pipeline_id)
-        event = await self.event_bus.consume(topic, timeout=timeout)
-        return event
+        try:
+            event = await self.event_bus.consume(topic, timeout=timeout)
+            return event
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("Pipeline event consume failed topic=%s error=%s", topic, exc)
+            return {}
 
     def analyze_logs(self, request: AnalyzeLogsRequest) -> MonitoringResult:
         response = self.monitoring_agent.run(

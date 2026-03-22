@@ -32,6 +32,27 @@ router = APIRouter()
 _ORCHESTRATOR: Orchestrator | None = None
 
 
+def _detect_payment_integration(repo_files: dict[str, str]) -> bool:
+    payment_markers = [
+        "stripe",
+        "razorpay",
+        "paypal",
+        "paytm",
+        "braintree",
+        "square",
+        "checkout",
+        "payment",
+        "transaction",
+        "billing",
+        "invoice",
+    ]
+    for rel_path, content in repo_files.items():
+        haystack = f"{rel_path}\n{content}".lower()
+        if any(marker in haystack for marker in payment_markers):
+            return True
+    return False
+
+
 async def get_validated_github_payload(
     request: Request,
     settings: Settings,
@@ -153,7 +174,9 @@ async def submit_github(
     repo_url: str = Form(...),
     branch: str | None = Form(default="main"),
     code_entry: str | None = Form(default=None),
-    enable_auto_pr: bool = Form(default=True),
+    enable_auto_pr: bool = Form(default=False),
+    multimodal_modes: str = Form(default=""),
+    multimodal_text: str = Form(default=""),
     force_real: bool = Query(default=True),
     orchestrator: Orchestrator = Depends(get_orchestrator),
     settings: Settings = Depends(get_settings),
@@ -169,6 +192,17 @@ async def submit_github(
     effective_github_token = session_token or settings.github_token
     requested_enable_auto_pr = enable_auto_pr
 
+    # Explicitly reject PR/commit/compare URLs in v1 so behavior is predictable.
+    lowered = repo_url.lower()
+    if any(segment in lowered for segment in ["/pull/", "/pulls/", "/commit/", "/compare/"]):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Pull request and commit URLs are not supported yet. "
+                "Please submit a repository root URL such as https://github.com/owner/repo."
+            ),
+        )
+
     # Extract owner/repo from the provided URL (support several common forms)
     # Examples supported:
     #  - https://github.com/owner/repo
@@ -182,86 +216,63 @@ async def submit_github(
     repo_name = m.group(2)
     headers = {"User-Agent": "devops-agent/0.1"}
     if effective_github_token:
-        headers["Authorization"] = f"token {effective_github_token}"
+        headers["Authorization"] = f"Bearer {effective_github_token}"
 
-    requested_branch = (branch or "").strip()
-    branch_candidates: list[str] = []
-    if requested_branch:
-        branch_candidates.append(requested_branch)
+    selected_branch: str | None = None
+    resp: httpx.Response | None = None
 
-    resolved_default_branch: str | None = None
-
-    async with httpx.AsyncClient(follow_redirects=True, headers=headers) as client:
+    async with (
+        httpx.AsyncClient(follow_redirects=True, headers=headers) as client,
+        httpx.AsyncClient(follow_redirects=True, headers={"User-Agent": "devops-agent/0.1"}) as public_client,
+    ):
         try:
             repo_meta = await client.get(f"https://api.github.com/repos/{owner}/{repo_name}", timeout=20.0)
-            if repo_meta.status_code == 200:
-                repo_meta_json = repo_meta.json()
-                resolved_default_branch = str(repo_meta_json.get("default_branch") or "").strip() or None
-                if resolved_default_branch:
-                    branch_candidates.append(resolved_default_branch)
+            if repo_meta.status_code != 200:
+                # Retry metadata without auth so a stale token does not block public repos.
+                repo_meta = await public_client.get(f"https://api.github.com/repos/{owner}/{repo_name}", timeout=20.0)
+        except httpx.RequestError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to fetch repository metadata: {exc}",
+            )
 
-                # Enforce push permission only when auto-PR is enabled.
-                if effective_github_token and requested_enable_auto_pr:
-                    permissions = repo_meta_json.get("permissions", {})
-                    if not bool(permissions.get("push", False)):
-                        # Gracefully degrade to analysis-only mode when token cannot push.
-                        enable_auto_pr = False
-        except httpx.RequestError:
-            # If metadata preflight fails, continue with branch fallbacks.
-            pass
-
-        branch_candidates.extend(["main", "master"])
-        # Preserve order while deduplicating branch names.
-        branch_candidates = list(dict.fromkeys([b for b in branch_candidates if b]))
-
-        resp: httpx.Response | None = None
-        selected_branch: str | None = None
-        last_status_code: int | None = None
-
-        for candidate_branch in branch_candidates:
-            api_zip_url = f"https://api.github.com/repos/{owner}/{repo_name}/zipball/{candidate_branch}"
-            try:
-                # If we have a token, try API zipball first (works for private repos).
-                if effective_github_token:
-                    resp = await client.get(api_zip_url, timeout=30.0)
-                else:
-                    zip_url = f"https://github.com/{owner}/{repo_name}/archive/refs/heads/{candidate_branch}.zip"
-                    resp = await client.get(zip_url, timeout=30.0)
-            except httpx.RequestError:
-                resp = None
-
-            if resp is not None and resp.status_code == 200:
-                selected_branch = candidate_branch
-                break
-
-            if resp is not None:
-                last_status_code = resp.status_code
-
-            # Fallback to codeload URL (often needed when GitHub serves redirects differently).
-            codeload_url = f"https://codeload.github.com/{owner}/{repo_name}/zip/{candidate_branch}"
-            try:
-                resp = await client.get(codeload_url, timeout=30.0)
-            except httpx.RequestError:
-                resp = None
-
-            if resp is not None and resp.status_code == 200:
-                selected_branch = candidate_branch
-                break
-
-            if resp is not None:
-                last_status_code = resp.status_code
-
-        if resp is None or resp.status_code != 200 or not selected_branch:
-            attempted = ", ".join(branch_candidates) if branch_candidates else "none"
-            status_text = str(last_status_code) if last_status_code is not None else "network-error"
+        if repo_meta.status_code != 200:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"Failed to download repo archive: HTTP {status_text}. "
-                    f"Tried branches: {attempted}. "
+                    f"Failed to fetch repository metadata: HTTP {repo_meta.status_code}. "
+                    "Verify the repository exists and your token has access."
+                ),
+            )
+
+        repo_meta_json = repo_meta.json()
+        default_branch = str(repo_meta_json.get("default_branch") or "").strip()
+        if not default_branch:
+            raise HTTPException(status_code=400, detail="Repository metadata missing default_branch")
+
+        # Prefer explicit branch from the request when provided, otherwise fall back to the repository default.
+        selected_branch = (branch or default_branch or "").strip() or default_branch
+        zip_url = f"https://api.github.com/repos/{owner}/{repo_name}/zipball/{selected_branch}"
+
+        try:
+            resp = await client.get(zip_url, timeout=30.0)
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=400, detail=f"Failed to download repo archive: {exc}")
+
+        if resp.status_code != 200:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Failed to download repo archive: HTTP {resp.status_code}. "
+                    f"Branch used: {selected_branch}. "
                     "If the repository is private, login with GitHub or configure GITHUB_TOKEN with access."
                 ),
             )
+
+        # Keep the user's auto-PR choice; orchestrator will attempt PR creation
+        # with available tokens and emit explicit failures if permissions are missing.
+        if requested_enable_auto_pr:
+            enable_auto_pr = True
 
         with tempfile.TemporaryDirectory(prefix="github_repo_") as tmpdir:
             tmp = Path(tmpdir)
@@ -298,12 +309,35 @@ async def submit_github(
 
             from models.schemas import SubmitCodeRequest as SCR
 
+            selected_modes = [m.strip().lower() for m in multimodal_modes.split(",") if m.strip()]
+            selected_modes = list(dict.fromkeys(selected_modes))
+
+            if "payment" in selected_modes and not _detect_payment_integration(repo_files):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Selected Payment Analyzer, but this repository does not appear to have payment integration.",
+                )
+
+            multimodal_inputs: list[dict] = []
+            if selected_modes:
+                for mode in selected_modes:
+                    modality = "log" if mode == "git_logs" else "metrics"
+                    multimodal_inputs.append(
+                        {
+                            "modality": modality,
+                            "content": multimodal_text.strip() or f"Mode selected: {mode}",
+                            "name": f"submit_multimodal_{mode}",
+                            "metadata": {"source": "submit-github", "mode": mode},
+                        }
+                    )
+
             request = SCR(
                 repo_name=repo_name,
                 code=primary_code,
                 diff="",
                 config_text="",
                 repo_files=repo_files,
+                multimodal_inputs=multimodal_inputs,
                 enable_auto_pr=enable_auto_pr,
                 repo_full_name=f"{owner}/{repo_name}",
                 clone_url=repo_url,
@@ -485,7 +519,11 @@ async def github_pr_webhook(
         registry = state.artifacts.get("auto_pr_registry", {}) if isinstance(state.artifacts, dict) else {}
         branches = registry.get("branches", []) if isinstance(registry, dict) else []
         for item in branches:
-            if isinstance(item, dict) and item.get("branch_name") == branch_name:
+            if not isinstance(item, dict):
+                continue
+            branch_match = item.get("branch_name") == branch_name
+            pr_match = pr_number is not None and item.get("pr_number") == pr_number
+            if branch_match or pr_match:
                 matched_state = state
                 matched_branch = item
                 break

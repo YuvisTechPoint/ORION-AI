@@ -274,14 +274,16 @@ class AutoPRService:
             if "already exists" not in str(exc).lower():
                 raise
 
+        # gh pr view does not support --head on some CLI versions. Passing
+        # the branch name positionally is the most compatible way to resolve
+        # the PR details for the just-created head branch.
         view_result = await self._run_local_cmd(
             self._gh_cmd(
                 "pr",
                 "view",
+                bundle.branch_name,
                 "--repo",
                 self.repo_full_name,
-                "--head",
-                bundle.branch_name,
                 "--json",
                 "number,url",
             ),
@@ -340,7 +342,19 @@ class AutoPRService:
         repo_resp = await self.client.get(f"/repos/{self.repo_full_name}")
         await self._ensure_success(repo_resp, f"Failed loading repository {self.repo_full_name}")
         repo_data = repo_resp.json() if repo_resp.headers.get("content-type", "").startswith("application/json") else {}
-        permissions = repo_data.get("permissions", {}) if isinstance(repo_data, dict) else {}
+
+        # Align base branch with the repository's default branch to avoid
+        # branch lookup failures when callers pass a non-existent branch
+        # (e.g., "main" vs "master"). This keeps auto-PR creation robust
+        # across repositories without requiring callers to know the default.
+        if isinstance(repo_data, dict):
+            default_branch = repo_data.get("default_branch")
+            if isinstance(default_branch, str) and default_branch.strip():
+                self.base_branch = default_branch.strip()
+
+            permissions = repo_data.get("permissions", {})
+        else:
+            permissions = {}
         if permissions and not bool(permissions.get("push", False)):
             raise PermissionError(
                 f"Token does not have push access to {self.repo_full_name}; cannot create branches/PRs"

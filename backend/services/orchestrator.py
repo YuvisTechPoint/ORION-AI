@@ -601,7 +601,17 @@ class Orchestrator:
         return simulated, {"mode": "simulated", "passed": simulated}
 
     def _simulate_stress(self, analysis: CodeAnalysisResult, security: SecurityResult) -> bool:
-        risk = len([issue for issue in analysis.issues if issue.severity == "high"]) + len(security.issues)
+        if security.blocked:
+            return False
+
+        high_security = any(issue.severity == "high" for issue in security.issues)
+        if high_security:
+            return False
+
+        if analysis.quality_score < 60:
+            return False
+
+        risk = len([issue for issue in analysis.issues if issue.severity in {"high", "medium"}]) + len(security.issues)
         seed = analysis.quality_score + risk
         random.seed(seed)
         return random.random() > min(0.4, risk * 0.05)
@@ -673,8 +683,8 @@ class Orchestrator:
         llm_mode = "live" if self.settings.llm_api_key else "mock"
         if current_stage == "approval":
             return (
-                "Approval denied: no explicit approval decision was produced by pipeline control "
-                f"(llm_mode={llm_mode}); use Trigger Deployment with an approver API key."
+                "Approval fallback applied: pipeline control did not return a valid approval decision "
+                f"(llm_mode={llm_mode})."
             )
         return f"Fallback decision at {current_stage} gate because pipeline control output was invalid (llm_mode={llm_mode})."
 

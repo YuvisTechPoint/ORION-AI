@@ -104,12 +104,17 @@ class Orchestrator:
                 seen_tokens.add(t)
                 effective_tokens.append(t)
 
-            if not effective_tokens:
-                message = "Auto PR skipped: no GitHub token available for PR creation"
+            gh_cli_available = AutoPRService.is_gh_cli_available()
+            auth_candidates: list[str | None] = effective_tokens[:] if effective_tokens else []
+            if not auth_candidates and gh_cli_available:
+                auth_candidates = [None]
+
+            if not auth_candidates:
+                message = "Auto PR skipped: no GitHub token available and gh CLI is not configured"
                 blocker_reasons.append(message)
                 state.artifacts["auto_pr_registry"] = {
                     "branches": [],
-                    "reason": "github-token-not-configured",
+                    "reason": "github-token-and-gh-not-configured",
                 }
                 self._record(state, "dev", message)
                 await self._publish_pipeline_event(state, message)
@@ -118,7 +123,7 @@ class Orchestrator:
                 anthropic_client = Anthropic(api_key=anthropic_key) if anthropic_key else None
                 token_errors: list[str] = []
 
-                for token in effective_tokens:
+                for token in auth_candidates:
                     try:
                         auto_pr_service = AutoPRService(
                             github_token=token,

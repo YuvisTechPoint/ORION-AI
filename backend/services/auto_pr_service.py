@@ -5,6 +5,10 @@ import base64
 import dataclasses
 import json
 import os
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
 from uuid import uuid4
 from typing import Any
 
@@ -45,21 +49,249 @@ class AutoPRService:
         clone_url: str,
         base_branch: str = "main",
     ) -> None:
-        self.github_token = get_effective_github_token(github_token)
+        provided_token = (github_token or "").strip()
+        if provided_token:
+            self.github_token = provided_token
+        else:
+            try:
+                self.github_token = get_effective_github_token(None)
+            except ValueError:
+                self.github_token = ""
+
         self.repo_full_name = repo_full_name
         self.clone_url = clone_url
         self.base_branch = base_branch
         self.created_branches: list[str] = []
+        self.gh_executable = self._detect_gh_executable()
+
+        provider = (os.getenv("ORION_AUTO_PR_PROVIDER", "gh_cli") or "gh_cli").strip().lower()
+        gh_requested = provider in {"gh", "gh_cli", "github_cli"}
+        self.auto_pr_backend = "gh_cli" if gh_requested and bool(self.gh_executable) else "github_api"
+        if gh_requested and self.auto_pr_backend != "gh_cli":
+            logger.warning("ORION_AUTO_PR_PROVIDER requested gh_cli, but gh is unavailable; falling back to github_api")
+
+        self._gh_workspace: str | None = None
+        self._gh_repo_path: str | None = None
 
         self.client = httpx.AsyncClient(
             base_url="https://api.github.com",
-            headers={
-                "Authorization": f"token {self.github_token}",
-                "Accept": "application/vnd.github.v3+json",
-            },
+            headers=self._github_api_headers(),
         )
         self.git_service = GitService(clone_url)
         self.anthropic_client: Anthropic | None = None
+
+    @staticmethod
+    def _detect_gh_executable() -> str | None:
+        for env_key in ("ORION_GH_PATH", "GH_PATH"):
+            candidate = (os.getenv(env_key) or "").strip()
+            if candidate and Path(candidate).exists():
+                return candidate
+
+        which_value = shutil.which("gh")
+        if which_value:
+            return which_value
+
+        windows_candidates = [
+            Path(os.getenv("ProgramFiles", "")) / "GitHub CLI" / "gh.exe",
+            Path(os.getenv("ProgramFiles(x86)", "")) / "GitHub CLI" / "gh.exe",
+            Path(os.getenv("LOCALAPPDATA", "")) / "Programs" / "GitHub CLI" / "gh.exe",
+        ]
+        for candidate in windows_candidates:
+            if str(candidate) and candidate.exists():
+                return str(candidate)
+
+        return None
+
+    @staticmethod
+    def is_gh_cli_available() -> bool:
+        return AutoPRService._detect_gh_executable() is not None
+
+    def _gh_cmd(self, *args: str) -> list[str]:
+        exe = self.gh_executable or "gh"
+        return [exe, *args]
+
+    def _github_api_headers(self) -> dict[str, str]:
+        headers = {"Accept": "application/vnd.github.v3+json"}
+        if self.github_token:
+            headers["Authorization"] = f"token {self.github_token}"
+        return headers
+
+    async def _run_local_cmd(
+        self,
+        args: list[str],
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+        context: str = "command failed",
+    ) -> subprocess.CompletedProcess[str]:
+        def _run() -> subprocess.CompletedProcess[str]:
+            base_env = os.environ.copy()
+            if env:
+                base_env.update(env)
+            return subprocess.run(  # noqa: S603
+                args,
+                cwd=cwd,
+                env=base_env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        result = await asyncio.to_thread(_run)
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "").strip()
+            raise RuntimeError(f"{context}: {' '.join(args)} -> {detail}")
+        return result
+
+    async def _ensure_gh_cli_access(self) -> None:
+        if not self.gh_executable:
+            raise PermissionError("GitHub CLI (gh) is not installed on the backend host")
+
+        await self._run_local_cmd(self._gh_cmd("--version"), context="Unable to execute GitHub CLI")
+        await self._run_local_cmd(
+            self._gh_cmd("auth", "status", "--hostname", "github.com"),
+            context="GitHub CLI is not authenticated; run 'gh auth login' on the backend host",
+        )
+        await self._run_local_cmd(
+            self._gh_cmd("repo", "view", self.repo_full_name),
+            context=f"GitHub CLI cannot access repository {self.repo_full_name}",
+        )
+
+    async def _ensure_gh_repo_checkout(self) -> str:
+        if self._gh_repo_path and Path(self._gh_repo_path).exists():
+            return self._gh_repo_path
+
+        workspace = tempfile.mkdtemp(prefix="orion_gh_repo_")
+        self._gh_workspace = workspace
+        repo_dirname = self.repo_full_name.split("/", 1)[-1]
+
+        try:
+            await self._run_local_cmd(
+                self._gh_cmd(
+                    "repo",
+                    "clone",
+                    self.repo_full_name,
+                    repo_dirname,
+                    "--",
+                    "--branch",
+                    self.base_branch,
+                    "--single-branch",
+                ),
+                cwd=workspace,
+                context=f"Failed to clone {self.repo_full_name} with gh",
+            )
+        except RuntimeError:
+            await self._run_local_cmd(
+                self._gh_cmd("repo", "clone", self.repo_full_name, repo_dirname),
+                cwd=workspace,
+                context=f"Failed to clone {self.repo_full_name} with gh",
+            )
+
+        repo_path = str(Path(workspace) / repo_dirname)
+        await self._run_local_cmd(["git", "checkout", self.base_branch], cwd=repo_path, context="Failed to checkout base branch")
+        await self._run_local_cmd(["git", "pull", "--ff-only", "origin", self.base_branch], cwd=repo_path, context="Failed to update base branch")
+        await self._run_local_cmd(["git", "config", "user.name", "orion-bot"], cwd=repo_path, context="Failed to set git user.name")
+        await self._run_local_cmd(
+            ["git", "config", "user.email", "orion-bot@users.noreply.github.com"],
+            cwd=repo_path,
+            context="Failed to set git user.email",
+        )
+
+        self._gh_repo_path = repo_path
+        return repo_path
+
+    async def _ensure_unique_branch_name(self, repo_path: str, preferred: str, run_id: str) -> str:
+        candidate = preferred
+        for attempt in range(0, 6):
+            result = await self._run_local_cmd(
+                ["git", "ls-remote", "--heads", "origin", candidate],
+                cwd=repo_path,
+                context="Failed checking remote branches",
+            )
+            if not (result.stdout or "").strip():
+                return candidate
+
+            suffix = f"-{run_id[:6]}"
+            if attempt > 0:
+                suffix = f"-{run_id[:6]}-{attempt}"
+            candidate = f"{preferred}{suffix}"
+
+        raise RuntimeError(f"Could not determine unique branch name for {preferred}")
+
+    async def _create_branch_with_fixes_via_gh(self, bundle: IssueBundle, run_id: str) -> str:
+        repo_path = await self._ensure_gh_repo_checkout()
+        branch_name = await self._ensure_unique_branch_name(repo_path, bundle.branch_name, run_id)
+        bundle.branch_name = branch_name
+
+        await self._run_local_cmd(["git", "checkout", self.base_branch], cwd=repo_path, context="Failed to reset to base branch")
+        await self._run_local_cmd(["git", "pull", "--ff-only", "origin", self.base_branch], cwd=repo_path, context="Failed refreshing base branch")
+        await self._run_local_cmd(["git", "checkout", "-B", branch_name], cwd=repo_path, context="Failed creating working branch")
+
+        for patch in bundle.file_patches:
+            file_path = str(patch.get("file_path", "")).strip()
+            if not file_path:
+                continue
+            abs_path = Path(repo_path) / file_path
+            abs_path.parent.mkdir(parents=True, exist_ok=True)
+            abs_path.write_text(str(patch.get("fixed_content", "")), encoding="utf-8")
+
+        await self._run_local_cmd(["git", "add", "-A"], cwd=repo_path, context="Failed staging remediation changes")
+        status = await self._run_local_cmd(["git", "status", "--porcelain"], cwd=repo_path, context="Failed checking staged changes")
+        if not (status.stdout or "").strip():
+            raise RuntimeError(f"No file changes generated for {bundle.category} ({bundle.issue_id or 'issue'})")
+
+        commit_file = bundle.file_patches[0].get("file_path", "repository") if bundle.file_patches else "repository"
+        issue_type = str(bundle.issues[0].get("type", "issue")) if bundle.issues else "issue"
+        await self._run_local_cmd(
+            ["git", "commit", "-m", self.build_commit_message(bundle.category, issue_type, str(commit_file))],
+            cwd=repo_path,
+            context="Failed committing remediation changes",
+        )
+        await self._run_local_cmd(["git", "push", "-u", "origin", branch_name], cwd=repo_path, context="Failed pushing remediation branch")
+
+        self.created_branches.append(branch_name)
+        return branch_name
+
+    async def _create_pr_via_gh(self, bundle: IssueBundle) -> int:
+        create_args = [
+            *self._gh_cmd(
+                "pr",
+                "create",
+                "--repo",
+                self.repo_full_name,
+                "--base",
+                self.base_branch,
+                "--head",
+                bundle.branch_name,
+                "--title",
+                bundle.pr_title,
+                "--body",
+                bundle.pr_body,
+            ),
+        ]
+        try:
+            await self._run_local_cmd(create_args, context=f"Failed creating PR for {bundle.branch_name}")
+        except RuntimeError as exc:
+            if "already exists" not in str(exc).lower():
+                raise
+
+        view_result = await self._run_local_cmd(
+            self._gh_cmd(
+                "pr",
+                "view",
+                "--repo",
+                self.repo_full_name,
+                "--head",
+                bundle.branch_name,
+                "--json",
+                "number,url",
+            ),
+            context=f"Failed reading PR details for {bundle.branch_name}",
+        )
+        payload = json.loads(view_result.stdout or "{}")
+        pr_number = int(payload.get("number"))
+        bundle.pr_number = pr_number
+        bundle.pr_url = str(payload.get("url", ""))
+        return pr_number
 
     async def _ensure_success(self, response: httpx.Response, context: str) -> None:
         if 200 <= response.status_code < 300:
@@ -87,6 +319,13 @@ class AutoPRService:
         return ahead_by > 0
 
     async def verify_permissions(self) -> None:
+        if self.auto_pr_backend == "gh_cli":
+            await self._ensure_gh_cli_access()
+            return
+
+        if not self.github_token:
+            raise PermissionError("No GitHub token available for github_api backend")
+
         try:
             await validate_github_token(self.github_token)
         except Exception as exc:  # noqa: BLE001
@@ -113,6 +352,10 @@ class AutoPRService:
 
     async def close(self) -> None:
         await self.client.aclose()
+        if self._gh_workspace and Path(self._gh_workspace).exists():
+            shutil.rmtree(self._gh_workspace, ignore_errors=True)
+        self._gh_workspace = None
+        self._gh_repo_path = None
 
     def build_commit_message(self, category: str, issue_type: str, file_path: str) -> str:
         return f"fix({category}): resolve {issue_type} in {file_path}"
@@ -239,6 +482,9 @@ class AutoPRService:
         return slug or "issue"
 
     async def create_branch_with_fixes(self, bundle: IssueBundle, run_id: str) -> str:
+        if self.auto_pr_backend == "gh_cli":
+            return await self._create_branch_with_fixes_via_gh(bundle, run_id)
+
         try:
             head_response = await self.client.get(f"/repos/{self.repo_full_name}/git/ref/heads/{self.base_branch}")
             await self._ensure_success(head_response, f"Base branch lookup failed ({self.base_branch})")
@@ -317,6 +563,9 @@ class AutoPRService:
             bundle.pr_title = f"fix({bundle.category}): automated remediation"
         if not (bundle.pr_body or "").strip():
             bundle.pr_body = "Automated remediation from ORION pipeline."
+
+        if self.auto_pr_backend == "gh_cli":
+            return await self._create_pr_via_gh(bundle)
 
         head_exists = await self._head_branch_exists(bundle.branch_name)
         if not head_exists:

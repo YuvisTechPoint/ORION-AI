@@ -1,4 +1,8 @@
 import asyncio
+import json
+import os
+import shutil
+import subprocess
 
 from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi import File, UploadFile, Form, Query
@@ -51,6 +55,122 @@ def _detect_payment_integration(repo_files: dict[str, str]) -> bool:
         if any(marker in haystack for marker in payment_markers):
             return True
     return False
+
+
+def _detect_gh_executable() -> str | None:
+    for env_key in ("ORION_GH_PATH", "GH_PATH"):
+        candidate = (os.getenv(env_key) or "").strip()
+        if candidate and Path(candidate).exists():
+            return candidate
+
+    which_value = shutil.which("gh")
+    if which_value:
+        return which_value
+
+    windows_candidates = [
+        Path(os.getenv("ProgramFiles", "")) / "GitHub CLI" / "gh.exe",
+        Path(os.getenv("ProgramFiles(x86)", "")) / "GitHub CLI" / "gh.exe",
+        Path(os.getenv("LOCALAPPDATA", "")) / "Programs" / "GitHub CLI" / "gh.exe",
+    ]
+    for candidate in windows_candidates:
+        if str(candidate) and candidate.exists():
+            return str(candidate)
+
+    return None
+
+
+async def _run_gh_command(args: list[str], context: str) -> str:
+    gh_executable = _detect_gh_executable()
+    if not gh_executable:
+        raise HTTPException(status_code=400, detail="GitHub CLI is not installed on the backend host")
+
+    cmd = [gh_executable, *args]
+
+    def _run() -> subprocess.CompletedProcess[str]:
+        return subprocess.run(  # noqa: S603
+            cmd,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    result = await asyncio.to_thread(_run)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise HTTPException(status_code=400, detail=f"{context}: {detail}")
+    return result.stdout or ""
+
+
+def _extract_issue_lines(text: str, limit: int = 20) -> list[str]:
+    lines = [line.strip() for line in (text or "").splitlines()]
+    markers = ("error", "failed", "failure", "fatal", "traceback", "exception")
+    selected: list[str] = []
+    for line in lines:
+        if any(marker in line.lower() for marker in markers):
+            selected.append(line)
+        if len(selected) >= limit:
+            break
+    return selected
+
+
+def _build_multimodal_mode_result(mode: str, content: str, metadata: dict[str, str] | None = None) -> dict:
+    issues = _extract_issue_lines(content)
+    severity = "high" if issues else "low"
+    return {
+        "mode": mode,
+        "issues_found": len(issues),
+        "severity": severity,
+        "issues": issues,
+        "summary": f"{mode} analyzer found {len(issues)} potential issue lines",
+        "metadata": metadata or {},
+    }
+
+
+async def _fetch_github_workflow_logs_via_gh(repo_full_name: str, branch: str, limit: int = 1) -> tuple[str, dict[str, str]]:
+    await _run_gh_command(["auth", "status", "--hostname", "github.com"], "GitHub CLI is not authenticated")
+
+    branch_name = branch.strip() or "main"
+    list_output = await _run_gh_command(
+        [
+            "run",
+            "list",
+            "--repo",
+            repo_full_name,
+            "--branch",
+            branch_name,
+            "--limit",
+            str(max(1, min(limit, 10))),
+            "--json",
+            "databaseId,displayTitle,workflowName,status,conclusion,headBranch,url,createdAt",
+        ],
+        f"Failed listing workflow runs for {repo_full_name}",
+    )
+    runs = json.loads(list_output or "[]")
+    if not isinstance(runs, list) or not runs:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No workflow runs found on {repo_full_name} branch {branch_name}. Trigger a GitHub Action first.",
+        )
+
+    latest = runs[0] if isinstance(runs[0], dict) else {}
+    run_id = latest.get("databaseId")
+    if not run_id:
+        raise HTTPException(status_code=400, detail="Unable to resolve workflow run id from GitHub CLI output")
+
+    logs_text = await _run_gh_command(
+        ["run", "view", str(run_id), "--repo", repo_full_name, "--log"],
+        f"Failed fetching workflow logs for run {run_id}",
+    )
+    metadata = {
+        "repo_full_name": repo_full_name,
+        "branch": branch_name,
+        "run_id": str(run_id),
+        "status": str(latest.get("status", "")),
+        "conclusion": str(latest.get("conclusion", "")),
+        "workflow": str(latest.get("workflowName", "")),
+        "url": str(latest.get("url", "")),
+    }
+    return logs_text, metadata
 
 
 async def get_validated_github_payload(
@@ -319,17 +439,60 @@ async def submit_github(
                 )
 
             multimodal_inputs: list[dict] = []
+            multimodal_results: list[dict] = []
             if selected_modes:
                 for mode in selected_modes:
+                    if mode == "git_logs":
+                        gh_logs, gh_metadata = await _fetch_github_workflow_logs_via_gh(
+                            repo_full_name=f"{owner}/{repo_name}",
+                            branch=selected_branch,
+                            limit=1,
+                        )
+                        combined_content = gh_logs
+                        if multimodal_text.strip():
+                            combined_content = f"{combined_content}\n\n# User notes\n{multimodal_text.strip()}"
+                        multimodal_inputs.append(
+                            {
+                                "modality": "log",
+                                "content": combined_content,
+                                "name": "submit_multimodal_git_logs",
+                                "metadata": {"source": "gh_cli_workflow", "mode": mode, **gh_metadata},
+                            }
+                        )
+                        multimodal_results.append(_build_multimodal_mode_result(mode, combined_content, gh_metadata))
+                        continue
+
+                    if mode == "payment":
+                        payment_hint = multimodal_text.strip() or "Payment analyzer selected. Review payment-sensitive code paths."
+                        payment_context = {
+                            "payment_related_files": [
+                                rel
+                                for rel, content in repo_files.items()
+                                if any(marker in f"{rel}\n{content}".lower() for marker in ["payment", "stripe", "checkout", "invoice"])
+                            ][:30]
+                        }
+                        multimodal_inputs.append(
+                            {
+                                "modality": "metrics",
+                                "content": payment_hint,
+                                "name": "submit_multimodal_payment",
+                                "metadata": {"source": "submit-github", "mode": mode, **payment_context},
+                            }
+                        )
+                        multimodal_results.append(_build_multimodal_mode_result(mode, payment_hint, payment_context))
+                        continue
+
                     modality = "log" if mode == "git_logs" else "metrics"
+                    content_value = multimodal_text.strip() or f"Mode selected: {mode}"
                     multimodal_inputs.append(
                         {
                             "modality": modality,
-                            "content": multimodal_text.strip() or f"Mode selected: {mode}",
+                            "content": content_value,
                             "name": f"submit_multimodal_{mode}",
                             "metadata": {"source": "submit-github", "mode": mode},
                         }
                     )
+                    multimodal_results.append(_build_multimodal_mode_result(mode, content_value, {"source": "submit-github"}))
 
             request = SCR(
                 repo_name=repo_name,
@@ -338,6 +501,7 @@ async def submit_github(
                 config_text="",
                 repo_files=repo_files,
                 multimodal_inputs=multimodal_inputs,
+                multimodal_results=multimodal_results,
                 enable_auto_pr=enable_auto_pr,
                 repo_full_name=f"{owner}/{repo_name}",
                 clone_url=repo_url,

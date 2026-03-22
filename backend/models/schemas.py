@@ -67,6 +67,7 @@ class SubmitCodeRequest(BaseModel):
     config_text: str | None = None
     repo_files: dict[str, str] | None = None
     multimodal_inputs: list["MultiModalInput"] | None = None
+    multimodal_results: list[dict[str, Any]] | None = None
     enable_auto_pr: bool = False
     repo_full_name: str | None = None
     clone_url: str | None = None

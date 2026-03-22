@@ -70,6 +70,11 @@ class Orchestrator:
         blocker_reasons: list[str] = []
         opened_pr_bundles: list[Any] = []
 
+        state.artifacts["multimodal"] = {
+            "inputs": [item.model_dump() for item in (request.multimodal_inputs or [])],
+            "results": request.multimodal_results or [],
+        }
+
         self._record(state, "dev", "Code submitted")
         await self._publish_pipeline_event(state, "Code submitted")
 
@@ -88,11 +93,15 @@ class Orchestrator:
             pipeline_run_id=state.pipeline_id,
             payload=agent_payload,
         )
+        combined_issues = self._inject_multimodal_findings(combined_issues, request.multimodal_results or [])
         state.artifacts["full_scan_combined"] = combined_issues
         self._record(state, "dev", "Full scan completed")
         await self._publish_pipeline_event(state, "Full scan completed")
 
-        if request.enable_auto_pr and self._has_non_passing_findings(combined_issues):
+        if request.enable_auto_pr and (
+            self._has_non_passing_findings(combined_issues)
+            or self._has_multimodal_findings(request.multimodal_results or [])
+        ):
             repo_path = self._materialize_repo_snapshot(request)
             token_candidates = [github_token, self._resolve_github_token()]
             seen_tokens: set[str] = set()
@@ -406,6 +415,52 @@ class Orchestrator:
         )
         qa_non_passing = isinstance(qa_issues, dict) and (not bool(qa_issues.get("passed", True)))
         return code_non_passing or security_non_passing or qa_non_passing
+
+    def _has_multimodal_findings(self, multimodal_results: list[dict[str, Any]]) -> bool:
+        for result in multimodal_results:
+            if not isinstance(result, dict):
+                continue
+            if int(result.get("issues_found", 0) or 0) > 0:
+                return True
+            if str(result.get("severity", "")).lower() in {"high", "critical"}:
+                return True
+        return False
+
+    def _inject_multimodal_findings(self, combined_issues: dict[str, Any], multimodal_results: list[dict[str, Any]]) -> dict[str, Any]:
+        if not isinstance(combined_issues, dict):
+            combined_issues = {}
+
+        code_issues = combined_issues.get("code_issues")
+        if not isinstance(code_issues, dict):
+            code_issues = {"summary": "", "issues": []}
+            combined_issues["code_issues"] = code_issues
+
+        issue_list = code_issues.get("issues")
+        if not isinstance(issue_list, list):
+            issue_list = []
+            code_issues["issues"] = issue_list
+
+        for result in multimodal_results:
+            if not isinstance(result, dict):
+                continue
+            mode = str(result.get("mode", "multimodal"))
+            issues = result.get("issues", [])
+            if not isinstance(issues, list) or not issues:
+                continue
+
+            for line in issues[:20]:
+                issue_list.append(
+                    {
+                        "type": f"multimodal_{mode}_issue",
+                        "severity": "high",
+                        "line": "n/a",
+                        "fix": f"Review {mode} analyzer output and apply remediation",
+                        "snippet": str(line),
+                        "file_path": "orion_reports",
+                    }
+                )
+
+        return combined_issues
 
     def _build_pr_urls(self, repo_full_name: str, bundles: list[Any]) -> str:
         urls = [

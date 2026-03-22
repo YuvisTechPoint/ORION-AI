@@ -48,6 +48,35 @@ class LLMClient:
                 return {"summary": "LLM returned non-JSON content", "value": content, "raw": raw_fallback}
             return {"summary": "LLM returned non-JSON content", "value": content}
 
+    def _is_hf_router_chat_url(self) -> bool:
+        return "router.huggingface.co/v1/chat/completions" in self._hf_api_url
+
+    def _parse_hf_router_response(self, data: Any) -> dict[str, Any]:
+        content = ""
+        if isinstance(data, dict):
+            try:
+                content = str(data.get("choices", [])[0].get("message", {}).get("content", ""))
+            except Exception:
+                content = str(data.get("content") or data.get("text") or "")
+        return self._parse_structured_output(content or json.dumps(data), raw_fallback=data)
+
+    def _call_hf_router_chat(self, prompt: str, model: str) -> dict[str, Any]:
+        headers = {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "Return strict JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.0,
+            "max_tokens": 1536,
+        }
+        with httpx.Client(timeout=60.0) as client:
+            resp = client.post(self._hf_api_url, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+        return self._parse_hf_router_response(data)
+
     def _generate_via_huggingface(
         self,
         prompt: str,
@@ -69,6 +98,14 @@ class LLMClient:
             }
 
         model = self._model_for_agent(agent_name)
+        if self._is_hf_router_chat_url():
+            return self._generate_via_hf_router_with_retries(
+                prompt=prompt,
+                model=model,
+                max_retries=max_retries,
+                backoff_seconds=backoff_seconds,
+            )
+
         url = f"{self._hf_api_url}/{model}"
         headers = {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
         payload = {
@@ -103,6 +140,14 @@ class LLMClient:
                 if status_code in {401, 403}:
                     self._disabled_after_auth_failure = True
                     break
+                if status_code == 410:
+                    LOGGER.warning("Legacy HF inference endpoint returned 410; retrying via HF router chat completions")
+                    return self._generate_via_hf_router_with_retries(
+                        prompt=prompt,
+                        model=model,
+                        max_retries=max_retries,
+                        backoff_seconds=backoff_seconds,
+                    )
                 if attempt < max_retries:
                     time.sleep(backoff_seconds * (2 ** (attempt - 1)))
             except Exception as exc:  # noqa: BLE001
@@ -120,6 +165,45 @@ class LLMClient:
                     "severity": "high",
                     "line": "n/a",
                     "fix": "Verify Hugging Face token, model id, and network connectivity",
+                }
+            ],
+        }
+
+    def _generate_via_hf_router_with_retries(
+        self,
+        prompt: str,
+        model: str,
+        max_retries: int,
+        backoff_seconds: float,
+    ) -> dict[str, Any]:
+        last_exc: Exception | None = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                return self._call_hf_router_chat(prompt, model)
+            except httpx.HTTPStatusError as exc:
+                last_exc = exc
+                status_code = exc.response.status_code if exc.response is not None else None
+                LOGGER.warning("Hugging Face router call attempt %s failed: %s", attempt, exc)
+                if status_code in {401, 403}:
+                    self._disabled_after_auth_failure = True
+                    break
+                if attempt < max_retries:
+                    time.sleep(backoff_seconds * (2 ** (attempt - 1)))
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                LOGGER.warning("Hugging Face router call attempt %s failed: %s", attempt, exc)
+                if attempt < max_retries:
+                    time.sleep(backoff_seconds * (2 ** (attempt - 1)))
+
+        LOGGER.exception("Hugging Face router request failed after %s attempts: %s", max_retries, last_exc)
+        return {
+            "summary": "LLM call failed after retries",
+            "issues": [
+                {
+                    "type": "llm_call_error",
+                    "severity": "high",
+                    "line": "n/a",
+                    "fix": "Verify Hugging Face router access, token permissions, and model availability",
                 }
             ],
         }

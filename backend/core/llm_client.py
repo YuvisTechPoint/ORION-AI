@@ -24,7 +24,18 @@ class LLMClient:
         self._model = settings.llm_model
         self._provider = (settings.llm_provider or "openai").strip().lower()
         self._hf_api_url = settings.hf_api_url.rstrip("/")
+        try:
+            parsed = json.loads(settings.llm_agent_models_json or "{}")
+            self._agent_models = parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            self._agent_models = {}
         self._disabled_after_auth_failure = False
+
+    def _model_for_agent(self, agent_name: str | None) -> str:
+        if not agent_name:
+            return self._model
+        selected = self._agent_models.get(agent_name)
+        return str(selected).strip() if selected else self._model
 
     def _parse_structured_output(self, content: str, raw_fallback: Any | None = None) -> dict[str, Any]:
         try:
@@ -37,7 +48,13 @@ class LLMClient:
                 return {"summary": "LLM returned non-JSON content", "value": content, "raw": raw_fallback}
             return {"summary": "LLM returned non-JSON content", "value": content}
 
-    def _generate_via_huggingface(self, prompt: str, max_retries: int, backoff_seconds: float) -> dict[str, Any]:
+    def _generate_via_huggingface(
+        self,
+        prompt: str,
+        max_retries: int,
+        backoff_seconds: float,
+        agent_name: str | None,
+    ) -> dict[str, Any]:
         if self._disabled_after_auth_failure:
             return {
                 "summary": "LLM disabled after authorization failure",
@@ -51,7 +68,8 @@ class LLMClient:
                 ],
             }
 
-        url = f"{self._hf_api_url}/{self._model}"
+        model = self._model_for_agent(agent_name)
+        url = f"{self._hf_api_url}/{model}"
         headers = {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
         payload = {
             "inputs": prompt,
@@ -106,7 +124,13 @@ class LLMClient:
             ],
         }
 
-    def generate(self, prompt: str, max_retries: int = 3, backoff_seconds: float = 1.0) -> dict[str, Any]:
+    def generate(
+        self,
+        prompt: str,
+        max_retries: int = 3,
+        backoff_seconds: float = 1.0,
+        agent_name: str | None = None,
+    ) -> dict[str, Any]:
         """Call the LLM and return structured JSON.
 
         Always returns a dict. On error, returns an explanatory fallback dict.
@@ -116,7 +140,14 @@ class LLMClient:
             return {"summary": "Mock response (no API key)", "issues": [], "next_action": "continue"}
 
         if self._provider == "huggingface":
-            return self._generate_via_huggingface(prompt, max_retries=max_retries, backoff_seconds=backoff_seconds)
+            return self._generate_via_huggingface(
+                prompt,
+                max_retries=max_retries,
+                backoff_seconds=backoff_seconds,
+                agent_name=agent_name,
+            )
+
+        model = self._model_for_agent(agent_name)
 
         if self._disabled_after_auth_failure:
             return {
@@ -132,7 +163,7 @@ class LLMClient:
             }
 
         payload: dict[str, Any] = {
-            "model": self._model,
+            "model": model,
             "messages": [
                 {"role": "system", "content": "Return strict JSON only."},
                 {"role": "user", "content": prompt},

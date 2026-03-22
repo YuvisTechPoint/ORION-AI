@@ -23,6 +23,19 @@ class BaseMultimodalAgent:
         self.anthropic_client = anthropic_client
         self.artifacts: list[dict[str, Any]] = artifacts or []
         self.llm_client = LLMClient(settings)
+        self.agent_name = self.__class__.__name__.replace("Agent", "").lower() + "_multimodal"
+
+    def _resolve_anthropic_model(self) -> str:
+        default_model = settings.anthropic_model
+        try:
+            mapping = json.loads(settings.anthropic_agent_models_json or "{}")
+            if isinstance(mapping, dict):
+                candidate = mapping.get(self.agent_name)
+                if candidate:
+                    return str(candidate)
+        except Exception:
+            pass
+        return default_model
 
     def _build_text_fallback_prompt(self, system_prompt: str, user_prompt: str) -> str:
         serialized_artifacts: list[dict[str, str]] = []
@@ -133,16 +146,16 @@ class BaseMultimodalAgent:
         provider = (settings.llm_provider or "openai").strip().lower()
         if provider == "huggingface":
             fallback_prompt = self._build_text_fallback_prompt(system_prompt, user_prompt)
-            return self.llm_client.generate(fallback_prompt)
+            return self.llm_client.generate(fallback_prompt, agent_name=self.agent_name)
 
         if self.anthropic_client is None:
             fallback_prompt = self._build_text_fallback_prompt(system_prompt, user_prompt)
-            return self.llm_client.generate(fallback_prompt)
+            return self.llm_client.generate(fallback_prompt, agent_name=self.agent_name)
 
         content = self._build_multimodal_content(user_prompt)
 
         response = await self.anthropic_client.messages.create(
-            model=settings.anthropic_model,
+            model=self._resolve_anthropic_model(),
             max_tokens=max_tokens,
             system=system_prompt,
             messages=[{"role": "user", "content": content}],
@@ -165,7 +178,7 @@ class BaseMultimodalAgent:
             )
             retry_content = self._build_multimodal_content(retry_prompt)
             retry_response = await self.anthropic_client.messages.create(
-                model=settings.anthropic_model,
+                model=self._resolve_anthropic_model(),
                 max_tokens=max_tokens,
                 system=system_prompt,
                 messages=[{"role": "user", "content": retry_content}],

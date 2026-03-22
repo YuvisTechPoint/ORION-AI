@@ -72,6 +72,14 @@ class BaseMultimodalAgent(BaseAgent):
     def _call_claude_multimodal(self, system_prompt: str, text_prompt: str, max_tokens: int = 3000) -> tuple[str, int]:
         api_key = os.getenv("LLM_API_KEY", "")
         model = os.getenv("LLM_MODEL", "claude-3-7-sonnet-latest")
+        try:
+            mapping = json.loads(os.getenv("LLM_AGENT_MODELS_JSON", "{}"))
+            if isinstance(mapping, dict):
+                candidate = mapping.get(self.name)
+                if candidate:
+                    model = str(candidate)
+        except Exception:
+            pass
         provider = (os.getenv("LLM_PROVIDER", "openai") or "openai").strip().lower()
         if provider != "huggingface" and api_key and Anthropic is not None:
             try:
@@ -97,7 +105,7 @@ class BaseMultimodalAgent(BaseAgent):
                 pass
 
         fallback_prompt = f"{system_prompt}\n\n{text_prompt}\n\nArtifacts:\n{json.dumps(self.artifacts, default=str)[:12000]}"
-        raw = self.llm_client.generate(fallback_prompt)
+        raw = self.llm_client.generate(fallback_prompt, agent_name=self.name)
         if isinstance(raw, dict):
             return json.dumps(raw), 0
         return str(raw), 0

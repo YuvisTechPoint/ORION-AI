@@ -20,7 +20,7 @@ class MonitoringAgent(BaseAgent):
         prompt_payload["metrics"] = metrics
 
         prompt = self.build_prompt(prompt_payload)
-        raw = self.llm_client.generate(prompt)
+        raw = self.llm_client.generate(prompt, agent_name=self.name)
         if isinstance(raw, dict):
             parsed = raw
         else:

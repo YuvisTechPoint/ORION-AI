@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     llm_model: str = Field(default="gpt-4o-mini", alias="LLM_MODEL")
     llm_provider: str = Field(default="openai", alias="LLM_PROVIDER")
     hf_api_url: str = Field(default="https://api-inference.huggingface.co/models", alias="HF_API_URL")
+    llm_agent_models_json: str = Field(default="{}", alias="LLM_AGENT_MODELS_JSON")
+    anthropic_agent_models_json: str = Field(default="{}", alias="ANTHROPIC_AGENT_MODELS_JSON")
 
     database_url: str = Field(default="sqlite:///./devops_platform.db", alias="DATABASE_URL")
     queue_backend: str = Field(default="memory", alias="QUEUE_BACKEND")
@@ -28,6 +30,7 @@ class Settings(BaseSettings):
     qa_mode: str = Field(default="real", alias="QA_MODE")
     qa_timeout_seconds: int = Field(default=30, alias="QA_TIMEOUT_SECONDS")
     auto_redeploy_on_blocked: bool = Field(default=True, alias="AUTO_REDEPLOY_ON_BLOCKED")
+    auto_pr_enabled: bool = Field(default=True, alias="AUTO_PR_ENABLED")
     auth_enabled: bool = Field(default=False, alias="AUTH_ENABLED")
     auth_api_keys_json: str = Field(default="{}", alias="AUTH_API_KEYS_JSON")
     github_token: str = Field(default="", alias="GITHUB_TOKEN")

@@ -5,6 +5,7 @@ from typing import Any
 from core.llm_client import LLMClient
 from services.memory_store import MemoryStore
 from services.retriever import Retriever
+import logging
 
 
 class BaseAgent(ABC):
@@ -29,13 +30,28 @@ class BaseAgent(ABC):
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
         prompt_payload = self._prepare_payload(payload)
         prompt = self.build_prompt(prompt_payload)
-        raw = self.llm_client.generate(prompt)
-        # LLM client may return a dict (structured) or a JSON string — handle both.
-        if isinstance(raw, dict):
-            parsed = raw
-        else:
-            parsed = self._parse_json(raw)
-        self._record_memory(prompt_payload=prompt_payload, response_payload=parsed)
+        logger = logging.getLogger(__name__)
+        try:
+            raw = self.llm_client.generate(prompt, agent_name=self.name)
+            # LLM client may return a dict (structured) or a JSON string — handle both.
+            if isinstance(raw, dict):
+                parsed = raw
+            else:
+                parsed = self._parse_json(raw)
+        except Exception as exc:  # pragma: no cover - runtime resilience
+            logger.warning("Agent %s failed to run: %s", self.name, exc)
+            parsed = {
+                "summary": f"Agent {self.name} execution failed",
+                "error": str(exc),
+                "issues": [],
+                "skipped": True,
+            }
+
+        try:
+            self._record_memory(prompt_payload=prompt_payload, response_payload=parsed)
+        except Exception:
+            # Memory recording should not block agent execution.
+            logger.debug("Memory store append failed for agent %s", self.name)
         return parsed
 
     def _prepare_payload(self, payload: dict[str, Any]) -> dict[str, Any]:

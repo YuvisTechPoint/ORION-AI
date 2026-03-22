@@ -51,6 +51,14 @@ class LLMClient:
     def _is_hf_router_chat_url(self) -> bool:
         return "router.huggingface.co/v1/chat/completions" in self._hf_api_url
 
+    @staticmethod
+    def _http_error_detail(exc: httpx.HTTPStatusError) -> str:
+        try:
+            body = exc.response.text if exc.response is not None else ""
+        except Exception:
+            body = ""
+        return body.strip()[:600]
+
     def _parse_hf_router_response(self, data: Any) -> dict[str, Any]:
         content = ""
         if isinstance(data, dict):
@@ -76,6 +84,29 @@ class LLMClient:
             resp.raise_for_status()
             data = resp.json()
         return self._parse_hf_router_response(data)
+
+    def _call_hf_router_inference(self, prompt: str, model: str) -> dict[str, Any]:
+        headers = {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
+        url = f"https://router.huggingface.co/hf-inference/models/{model}"
+        payload = {
+            "inputs": prompt,
+            "parameters": {
+                "return_full_text": False,
+                "temperature": 0.0,
+                "max_new_tokens": 1536,
+            },
+        }
+        with httpx.Client(timeout=60.0) as client:
+            resp = client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+
+        generated_text = ""
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            generated_text = str(data[0].get("generated_text", ""))
+        elif isinstance(data, dict):
+            generated_text = str(data.get("generated_text", "") or data.get("summary_text", "") or data.get("text", ""))
+        return self._parse_structured_output(generated_text or json.dumps(data), raw_fallback=data)
 
     def _generate_via_huggingface(
         self,
@@ -183,10 +214,29 @@ class LLMClient:
             except httpx.HTTPStatusError as exc:
                 last_exc = exc
                 status_code = exc.response.status_code if exc.response is not None else None
-                LOGGER.warning("Hugging Face router call attempt %s failed: %s", attempt, exc)
+                LOGGER.warning(
+                    "Hugging Face router call attempt %s failed: %s | detail=%s",
+                    attempt,
+                    exc,
+                    self._http_error_detail(exc),
+                )
                 if status_code in {401, 403}:
                     self._disabled_after_auth_failure = True
                     break
+                if status_code == 400:
+                    try:
+                        LOGGER.warning("Retrying via HF router inference endpoint for model %s after chat-completions 400", model)
+                        return self._call_hf_router_inference(prompt, model)
+                    except httpx.HTTPStatusError as inf_exc:
+                        last_exc = inf_exc
+                        LOGGER.warning(
+                            "HF router inference fallback failed: %s | detail=%s",
+                            inf_exc,
+                            self._http_error_detail(inf_exc),
+                        )
+                    except Exception as inf_exc:  # noqa: BLE001
+                        last_exc = inf_exc
+                        LOGGER.warning("HF router inference fallback failed: %s", inf_exc)
                 if attempt < max_retries:
                     time.sleep(backoff_seconds * (2 ** (attempt - 1)))
             except Exception as exc:  # noqa: BLE001

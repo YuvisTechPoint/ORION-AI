@@ -63,6 +63,26 @@
             rows="8"
             placeholder="Or paste your log output directly here...&#10;&#10;Example:&#10;2026-03-22T10:12:06Z ERROR timeout connecting to db&#10;2026-03-22T10:12:07Z FATAL build failed: missing module 'requests'"
           ></textarea>
+          <div style="margin-top:10px;border:1px solid var(--border);border-radius:10px;padding:12px;background:rgba(255,255,255,0.6);">
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-primary);font-weight:600;cursor:pointer;">
+              <input id="git-use-gh-cli" type="checkbox" />
+              Fetch logs with GH CLI (server-side)
+            </label>
+            <div id="git-gh-fields" style="display:none;margin-top:10px;">
+              <div style="display:grid;gap:8px;grid-template-columns:1fr 120px;">
+                <input id="git-repo-full-name" type="text" placeholder="owner/repo (required for GH mode)" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text-primary);font-size:12px;" />
+                <input id="git-pr-number" type="number" min="1" placeholder="PR #" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text-primary);font-size:12px;" />
+              </div>
+              <div style="display:grid;gap:8px;grid-template-columns:1fr 1fr 120px;margin-top:8px;">
+                <input id="git-commit-sha" type="text" placeholder="Commit SHA (optional)" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text-primary);font-size:12px;" />
+                <input id="git-branch" type="text" value="main" placeholder="Branch" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text-primary);font-size:12px;" />
+                <input id="git-log-limit" type="number" min="1" max="100" value="30" placeholder="Limit" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text-primary);font-size:12px;" />
+              </div>
+              <div style="margin-top:8px;font-size:11px;color:var(--text-muted);">
+                GH mode reads PR/commit/recent commit history through the authenticated backend GitHub CLI session.
+              </div>
+            </div>
+          </div>
           <div id="git-error" class="modal-error" style="display:none"></div>
         </div>
         <div class="modal-footer">
@@ -225,20 +245,52 @@
         });
       }
 
+      function bindGitGhCliToggle() {
+        const toggle = document.getElementById("git-use-gh-cli");
+        const fields = document.getElementById("git-gh-fields");
+        if (!toggle || !fields) return;
+
+        const applyVisibility = () => {
+          fields.style.display = toggle.checked ? "block" : "none";
+        };
+        toggle.addEventListener("change", applyVisibility);
+        applyVisibility();
+      }
+
       async function runGitAnalysis() {
         const btn = document.getElementById("git-analyze-btn");
         const input = document.getElementById("git-file-input");
         const textArea = document.getElementById("git-text-input");
         const errorEl = document.getElementById("git-error");
-        if (!btn || !input || !textArea || !errorEl) return;
+        const useGhCliEl = document.getElementById("git-use-gh-cli");
+        const repoFullNameEl = document.getElementById("git-repo-full-name");
+        const prNumberEl = document.getElementById("git-pr-number");
+        const commitShaEl = document.getElementById("git-commit-sha");
+        const branchEl = document.getElementById("git-branch");
+        const logLimitEl = document.getElementById("git-log-limit");
+        if (!btn || !input || !textArea || !errorEl || !useGhCliEl || !repoFullNameEl || !prNumberEl || !commitShaEl || !branchEl || !logLimitEl) return;
 
         errorEl.style.display = "none";
         errorEl.textContent = "";
 
         const files = input.files || [];
         const text = textArea.value.trim();
-        if ((!files || !files.length) && !text) {
-          errorEl.textContent = "Provide at least one log file or paste log text.";
+        const useGhCli = Boolean(useGhCliEl.checked);
+        const repoFullName = repoFullNameEl.value.trim();
+        const prNumber = prNumberEl.value.trim();
+        const commitSha = commitShaEl.value.trim();
+        const branch = branchEl.value.trim();
+        const limitRaw = Number.parseInt(logLimitEl.value || "30", 10);
+        const logLimit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(limitRaw, 100)) : 30;
+
+        if ((!files || !files.length) && !text && !useGhCli) {
+          errorEl.textContent = "Provide file/text input or enable GH CLI mode.";
+          errorEl.style.display = "block";
+          return;
+        }
+
+        if (useGhCli && !repoFullName) {
+          errorEl.textContent = "In GH mode, owner/repo is required.";
           errorEl.style.display = "block";
           return;
         }
@@ -251,6 +303,14 @@
           const formData = new FormData();
           Array.from(files).forEach((file) => formData.append("files", file));
           if (text) formData.append("text_input", text);
+          formData.append("use_gh_cli", useGhCli ? "true" : "false");
+          if (useGhCli) {
+            formData.append("repo_full_name", repoFullName);
+            if (prNumber) formData.append("pr_number", prNumber);
+            if (commitSha) formData.append("commit_sha", commitSha);
+            formData.append("branch", branch || "main");
+            formData.append("log_limit", String(logLimit));
+          }
 
           const resp = await fetch(orionApiBase() + "/api/v1/multimodal/git-logs", {
             method: "POST",
@@ -570,6 +630,7 @@
 
       setupDropzone("git-dropzone", "git-file-input", "git-file-list");
       setupDropzone("payment-dropzone", "payment-file-input", "payment-file-list");
+      bindGitGhCliToggle();
 
       (function initShellPresentation() {
         function staggerCards() {

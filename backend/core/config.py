@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     llm_api_key: str = Field(default="", alias="LLM_API_KEY")
     llm_base_url: str = Field(default="https://api.openai.com/v1/chat/completions", alias="LLM_BASE_URL")
     llm_model: str = Field(default="gpt-4o-mini", alias="LLM_MODEL")
+    llm_provider: str = Field(default="openai", alias="LLM_PROVIDER")
+    hf_api_url: str = Field(default="https://api-inference.huggingface.co/models", alias="HF_API_URL")
 
     database_url: str = Field(default="sqlite:///./devops_platform.db", alias="DATABASE_URL")
     queue_backend: str = Field(default="memory", alias="QUEUE_BACKEND")

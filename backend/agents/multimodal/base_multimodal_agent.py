@@ -6,7 +6,10 @@ import os
 from abc import abstractmethod
 from typing import Any
 
-from anthropic import Anthropic
+try:
+    from anthropic import Anthropic
+except Exception:  # pragma: no cover - optional dependency
+    Anthropic = None
 
 from agents.base import BaseAgent
 
@@ -69,23 +72,29 @@ class BaseMultimodalAgent(BaseAgent):
     def _call_claude_multimodal(self, system_prompt: str, text_prompt: str, max_tokens: int = 3000) -> tuple[str, int]:
         api_key = os.getenv("LLM_API_KEY", "")
         model = os.getenv("LLM_MODEL", "claude-3-7-sonnet-latest")
-        if api_key:
-            client = Anthropic(api_key=api_key)
-            response = client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                system=system_prompt,
-                messages=[{"role": "user", "content": self._build_multimodal_message(text_prompt)}],
-            )
-            parts = []
-            for block in getattr(response, "content", []):
-                text = getattr(block, "text", "")
-                if text:
-                    parts.append(text)
-            output = "\n".join(parts).strip()
-            usage = getattr(response, "usage", None)
-            tokens = int(getattr(usage, "output_tokens", 0) or 0)
-            return output, tokens
+        provider = (os.getenv("LLM_PROVIDER", "openai") or "openai").strip().lower()
+        if provider != "huggingface" and api_key and Anthropic is not None:
+            try:
+                client = Anthropic(api_key=api_key)
+                response = client.messages.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": self._build_multimodal_message(text_prompt)}],
+                )
+                parts = []
+                for block in getattr(response, "content", []):
+                    text = getattr(block, "text", "")
+                    if text:
+                        parts.append(text)
+                output = "\n".join(parts).strip()
+                usage = getattr(response, "usage", None)
+                tokens = int(getattr(usage, "output_tokens", 0) or 0)
+                return output, tokens
+            except Exception:
+                # If the remote multimodal LLM call fails for any reason, fall back
+                # to the local LLM client behavior below instead of raising.
+                pass
 
         fallback_prompt = f"{system_prompt}\n\n{text_prompt}\n\nArtifacts:\n{json.dumps(self.artifacts, default=str)[:12000]}"
         raw = self.llm_client.generate(fallback_prompt)

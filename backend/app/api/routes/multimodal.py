@@ -230,7 +230,8 @@ async def analyze_git_logs(
     if not artifacts:
         raise HTTPException(status_code=400, detail="Provide at least one log file or paste log text")
 
-    anthropic_client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    provider = (settings.llm_provider or "openai").strip().lower()
+    anthropic_client = AsyncAnthropic(api_key=settings.anthropic_api_key) if provider != "huggingface" else None
     agent = GitLogAgent(anthropic_client=anthropic_client, artifacts=artifacts)
     result = await agent.execute()
 
@@ -293,7 +294,8 @@ async def analyze_payment(
     if not artifacts:
         raise HTTPException(status_code=400, detail="Provide at least one log file or paste log text")
 
-    anthropic_client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    provider = (settings.llm_provider or "openai").strip().lower()
+    anthropic_client = AsyncAnthropic(api_key=settings.anthropic_api_key) if provider != "huggingface" else None
     agent = PaymentAgent(anthropic_client=anthropic_client, artifacts=artifacts)
     result = await agent.execute()
 

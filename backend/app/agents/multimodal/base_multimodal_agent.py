@@ -8,6 +8,7 @@ import zipfile
 from typing import Any
 
 from app.config import settings
+from core.llm_client import LLMClient
 
 
 class BaseMultimodalAgent:
@@ -21,6 +22,31 @@ class BaseMultimodalAgent:
     def __init__(self, anthropic_client: Any, artifacts: list[dict[str, Any]] | None = None) -> None:
         self.anthropic_client = anthropic_client
         self.artifacts: list[dict[str, Any]] = artifacts or []
+        self.llm_client = LLMClient(settings)
+
+    def _build_text_fallback_prompt(self, system_prompt: str, user_prompt: str) -> str:
+        serialized_artifacts: list[dict[str, str]] = []
+        for artifact in self.artifacts:
+            filename = str(artifact.get("filename", "uploaded_file"))
+            artifact_type = str(artifact.get("type", "text"))
+            content = artifact.get("content", "")
+            if isinstance(content, (bytes, bytearray)):
+                text = content.decode("utf-8", errors="ignore")
+            else:
+                text = str(content)
+            serialized_artifacts.append(
+                {
+                    "filename": filename,
+                    "type": artifact_type,
+                    "content": text[:40000],
+                }
+            )
+        return (
+            f"{system_prompt}\n\n"
+            f"{user_prompt}\n\n"
+            "Artifacts (text-normalized):\n"
+            + json.dumps(serialized_artifacts, ensure_ascii=True)
+        )
 
     def _build_multimodal_content(self, text_prompt: str) -> list[dict[str, Any]]:
         """Build Anthropic messages content array from artifacts and a text prompt.
@@ -104,8 +130,14 @@ class BaseMultimodalAgent:
     async def _analyze(self, system_prompt: str, user_prompt: str, max_tokens: int = 4000) -> dict[str, Any]:
         """Call Anthropic Claude with multimodal content and parse strict JSON output."""
 
+        provider = (settings.llm_provider or "openai").strip().lower()
+        if provider == "huggingface":
+            fallback_prompt = self._build_text_fallback_prompt(system_prompt, user_prompt)
+            return self.llm_client.generate(fallback_prompt)
+
         if self.anthropic_client is None:
-            raise ValueError("Anthropic client is not configured for this agent")
+            fallback_prompt = self._build_text_fallback_prompt(system_prompt, user_prompt)
+            return self.llm_client.generate(fallback_prompt)
 
         content = self._build_multimodal_content(user_prompt)
 

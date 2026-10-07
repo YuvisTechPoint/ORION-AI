@@ -1,0 +1,9 @@
+{
+  "summary": "anomaly detected",
+  "anomalies": [
+    "db timeout"
+  ],
+  "suggestions": [
+    "increase pool size"
+  ]
+}

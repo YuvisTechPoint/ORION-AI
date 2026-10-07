@@ -1,0 +1,58 @@
+{
+  "name": "orion-devops",
+  "displayName": "ORION DevOps",
+  "description": "Pipeline status, scan triggers, and intelligence from the ORION control plane.",
+  "version": "0.1.0",
+  "publisher": "orion",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other", "SCM Providers"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "orion.showRuns",
+        "title": "ORION: Show Recent Pipeline Runs"
+      },
+      {
+        "command": "orion.triggerScan",
+        "title": "ORION: Trigger Pipeline Scan"
+      },
+      {
+        "command": "orion.openDashboard",
+        "title": "ORION: Open Dashboard"
+      },
+      {
+        "command": "orion.openIntelligence",
+        "title": "ORION: Open Intelligence Panel"
+      },
+      {
+        "command": "orion.refreshStatus",
+        "title": "ORION: Refresh Status"
+      }
+    ],
+    "configuration": {
+      "title": "ORION",
+      "properties": {
+        "orion.apiUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:8001",
+          "description": "ORION API base URL"
+        },
+        "orion.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "X-ORION-API-Key when API_REQUIRE_AUTH=true"
+        },
+        "orion.pollIntervalSeconds": {
+          "type": "number",
+          "default": 30,
+          "minimum": 10,
+          "description": "Status bar refresh interval"
+        }
+      }
+    }
+  }
+}

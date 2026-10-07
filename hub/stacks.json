@@ -1,0 +1,44 @@
+﻿[
+    {
+        "metaKeys":  [
+                         "qa_mode",
+                         "llm_mode",
+                         "queue_backend"
+                     ],
+        "id":  "canonical",
+        "ui":  "http://127.0.0.1:5173",
+        "title":  "DevOps Console",
+        "ready":  "http://127.0.0.1:8000/ready",
+        "health":  "http://127.0.0.1:8000/health",
+        "intelligence":  "http://127.0.0.1:8000/api/v1/intelligence/dashboard",
+        "desc":  "Submit code, archives, and GitHub repos with OAuth, Auto-PR, and multimodal intelligence."
+    },
+    {
+        "metaKeys":  [
+                         "deploy_mode",
+                         "executor",
+                         "llm_mode"
+                     ],
+        "id":  "orion",
+        "ui":  "http://127.0.0.1:8001/ui/",
+        "title":  "ORION CI/CD",
+        "ready":  "http://127.0.0.1:8001/ready",
+        "health":  "http://127.0.0.1:8001/health",
+        "intelligence":  "http://127.0.0.1:8001/api/v1/intelligence/dashboard",
+        "desc":  "Nine-stage webhook pipeline with parallel full scan, simulated deploy, and live WebSocket telemetry."
+    },
+    {
+        "metaKeys":  [
+                         "deploy_mode",
+                         "executor",
+                         "redis"
+                     ],
+        "id":  "platform",
+        "ui":  "http://127.0.0.1:3000",
+        "title":  "DevOps Platform",
+        "ready":  "http://127.0.0.1:8002/ready",
+        "health":  "http://127.0.0.1:8002/health",
+        "intelligence":  "http://127.0.0.1:8002/api/intelligence/dashboard",
+        "desc":  "Celery-backed agents with inline fallback, stress testing, and production deployment modes."
+    }
+]

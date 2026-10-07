@@ -1,0 +1,4253 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ORION CI/CD — Pipeline Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --cream: #f5f0e8;
+        --cream-dark: #ede6d6;
+        --cream-mid: #e8dfc8;
+        --sand: #d4c9a8;
+        --sand-dark: #b8aa88;
+        --orange-primary: #d4580a;
+        --orange-bright: #e8660f;
+        --orange-deep: #b8470a;
+        --orange-glow: rgba(212, 88, 10, 0.15);
+        --orange-glow-strong: rgba(212, 88, 10, 0.35);
+        --text-primary: #1a1208;
+        --text-secondary: #4a3b28;
+        --text-muted: #7a6a52;
+        --text-inverse: #f5f0e8;
+        --surface-card: rgba(255, 252, 245, 0.85);
+        --surface-inset: rgba(200, 190, 170, 0.25);
+        --border-subtle: rgba(180, 150, 100, 0.2);
+        --border-medium: rgba(180, 150, 100, 0.4);
+        --border-strong: rgba(180, 150, 100, 0.7);
+        --font-display: "DM Serif Display", Georgia, serif;
+        --font-mono: "JetBrains Mono", "Fira Code", monospace;
+        --font-ui: "DM Sans", system-ui, sans-serif;
+        --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+        --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--cream);
+        color: var(--text-primary);
+        font-family: var(--font-ui);
+        position: relative;
+        overflow-x: hidden;
+      }
+      .bg-system {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        overflow: hidden;
+      }
+      .bg-system .noise {
+        position: absolute;
+        inset: 0;
+        opacity: 0.04;
+        filter: url(#noiseFilter);
+      }
+      .bg-system .glow {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          ellipse 80% 50% at 20% 10%,
+          rgba(212, 88, 10, 0.08),
+          transparent 60%
+        );
+      }
+      .bg-system .dots {
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(
+          circle,
+          rgba(180, 150, 100, 0.15) 1px,
+          transparent 1px
+        );
+        background-size: 32px 32px;
+      }
+      .shell {
+        position: relative;
+        z-index: 1;
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: 24px 32px 48px;
+      }
+      header.top {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 16px;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+      .logo {
+        width: 44px;
+        height: 44px;
+      }
+      h1.title {
+        margin: 0;
+        font-family: var(--font-display);
+        font-size: 32px;
+        letter-spacing: -0.02em;
+      }
+      .right-cluster {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border-medium);
+        background: var(--surface-card);
+        font-size: 12px;
+        font-family: var(--font-mono);
+        position: relative;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--sand-dark);
+        position: relative;
+      }
+      .dot.ok {
+        background: #52a878;
+      }
+      .dot.warn {
+        background: var(--orange-primary);
+      }
+      .dot.live {
+        background: var(--orange-bright);
+      }
+      .pill .dot::after {
+        content: "";
+        position: absolute;
+        inset: -6px;
+        border-radius: 999px;
+        box-shadow: 0 0 0 0 rgba(82, 168, 120, 0.35);
+        animation: pulse-ring 1.8s infinite;
+      }
+      .pill.ws-live .dot::after,
+      .pill.mon-live .dot::after {
+        box-shadow: 0 0 0 0 rgba(212, 88, 10, 0.35);
+      }
+      @keyframes pulse-ring {
+        0% {
+          transform: scale(0.9);
+          opacity: 0.55;
+        }
+        70% {
+          transform: scale(1.35);
+          opacity: 0;
+        }
+        100% {
+          opacity: 0;
+        }
+      }
+      .btn-dark {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 10px 14px;
+        border-radius: 10px;
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        background: var(--text-primary);
+        color: var(--cream);
+        text-decoration: none;
+        font-weight: 500;
+        font-size: 13px;
+      }
+      .user-menu {
+        display: none;
+        position: relative;
+      }
+      .user-menu.open .user-menu-panel {
+        display: block;
+      }
+      .user-menu-trigger {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px 6px 6px;
+        border-radius: 999px;
+        border: 1px solid var(--border-medium);
+        background: var(--surface-card);
+        cursor: pointer;
+        font-family: var(--font-ui);
+        transition: border-color 200ms var(--ease-smooth), box-shadow 200ms var(--ease-smooth);
+      }
+      .user-menu-trigger:hover,
+      .user-menu.open .user-menu-trigger {
+        border-color: var(--orange-primary);
+        box-shadow: 0 4px 16px rgba(212, 88, 10, 0.12);
+      }
+      .user-menu-trigger img {
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        border: 2px solid var(--orange-primary);
+      }
+      .user-menu-chevron {
+        color: var(--text-muted);
+        transition: transform 200ms var(--ease-smooth);
+      }
+      .user-menu.open .user-menu-chevron {
+        transform: rotate(180deg);
+      }
+      .user-menu-panel {
+        display: none;
+        position: absolute;
+        right: 0;
+        top: calc(100% + 8px);
+        min-width: 240px;
+        padding: 8px;
+        border-radius: 14px;
+        border: 1px solid var(--border-medium);
+        background: rgba(255, 252, 245, 0.98);
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.14);
+        z-index: 200;
+      }
+      .user-menu-header {
+        padding: 10px 12px 12px;
+        border-bottom: 1px solid var(--border-subtle);
+        margin-bottom: 6px;
+      }
+      .user-menu-header strong {
+        display: block;
+        font-size: 14px;
+        color: var(--text-primary);
+      }
+      .user-menu-header span {
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .user-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 10px 12px;
+        border: none;
+        border-radius: 10px;
+        background: transparent;
+        color: var(--text-secondary);
+        font-family: var(--font-ui);
+        font-size: 13px;
+        font-weight: 500;
+        text-align: left;
+        text-decoration: none;
+        cursor: pointer;
+        transition: background 150ms var(--ease-smooth), color 150ms var(--ease-smooth);
+      }
+      .user-menu-item:hover {
+        background: var(--orange-glow);
+        color: var(--text-primary);
+      }
+      .user-menu-item.danger:hover {
+        background: rgba(201, 64, 64, 0.1);
+        color: #a32d2d;
+      }
+      .settings-tabs {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
+      .settings-tab {
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--border-subtle);
+        background: transparent;
+        color: var(--text-muted);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 180ms var(--ease-smooth);
+      }
+      .settings-tab.active {
+        border-color: var(--orange-primary);
+        background: var(--orange-glow);
+        color: var(--text-primary);
+      }
+      .settings-panel {
+        display: none;
+      }
+      .settings-panel.active {
+        display: block;
+      }
+      .settings-card {
+        border: 1px solid var(--border-subtle);
+        border-radius: 14px;
+        padding: 14px 16px;
+        margin-bottom: 14px;
+        background: rgba(255, 252, 245, 0.65);
+      }
+      .settings-card h3 {
+        margin: 0 0 8px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+      .settings-card p {
+        margin: 0 0 10px;
+        font-size: 12px;
+        color: var(--text-muted);
+        line-height: 1.45;
+      }
+      .settings-kv {
+        display: grid;
+        grid-template-columns: 120px 1fr;
+        gap: 8px 12px;
+        font-size: 12px;
+        margin-top: 8px;
+      }
+      .settings-kv dt {
+        color: var(--text-muted);
+        margin: 0;
+      }
+      .settings-kv dd {
+        margin: 0;
+        font-family: var(--font-mono);
+        color: var(--text-secondary);
+        word-break: break-all;
+      }
+      .settings-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .settings-status.ok {
+        background: rgba(82, 168, 120, 0.15);
+        color: #1e5c3a;
+      }
+      .settings-status.warn {
+        background: rgba(212, 88, 10, 0.12);
+        color: var(--orange-deep);
+      }
+      .settings-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border-subtle);
+        font-size: 13px;
+      }
+      .settings-toggle:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+      }
+      .settings-save-msg {
+        font-size: 12px;
+        color: #1e5c3a;
+        min-height: 18px;
+        margin-top: 8px;
+      }
+      .mono {
+        font-family: var(--font-mono);
+        font-size: 12px;
+      }
+      #auth-banner {
+        display: none;
+        margin: 12px 0 16px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(201, 122, 16, 0.35);
+        background: rgba(201, 122, 16, 0.12);
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+      #auth-banner a {
+        color: var(--orange-deep);
+        font-weight: 600;
+      }
+      #auth-banner.auth-error {
+        background: rgba(180, 50, 40, 0.12);
+        border-color: rgba(180, 50, 40, 0.35);
+        color: #6b2a22;
+      }
+      #auth-banner.auth-success {
+        background: rgba(40, 120, 70, 0.12);
+        border-color: rgba(40, 120, 70, 0.35);
+        color: #1f4d33;
+      }
+      .modal-triggers {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+
+      .orion-nav-hub {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin: 0 0 16px;
+        padding: 12px 16px;
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        background: linear-gradient(135deg, rgba(255, 248, 238, 0.08), rgba(212, 88, 10, 0.06));
+      }
+      .orion-nav-hub__stacks,
+      .orion-nav-hub__views {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+      }
+      .orion-nav-hub__label {
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        margin-right: 4px;
+      }
+      .orion-nav-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(0, 0, 0, 0.2);
+        color: var(--text-secondary);
+        font-size: 12px;
+        font-weight: 600;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .orion-nav-pill--active {
+        background: linear-gradient(135deg, var(--orange-primary), var(--orange-bright));
+        color: #fff;
+        border-color: transparent;
+      }
+      .btn-modal-trigger {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        border: 1px solid var(--border-medium);
+        background: var(--surface-card);
+        color: var(--text-primary);
+        font-weight: 600;
+        font-size: 13px;
+        cursor: pointer;
+        transition: border-color 200ms var(--ease-smooth), background 200ms var(--ease-smooth),
+          box-shadow 200ms var(--ease-smooth), transform 120ms var(--ease-smooth), color 200ms var(--ease-smooth);
+      }
+      .btn-modal-trigger:hover {
+        border-color: var(--orange-primary);
+        background: linear-gradient(180deg, rgba(255, 252, 245, 0.98), rgba(255, 228, 196, 0.55));
+        color: var(--text-primary);
+        box-shadow: 0 10px 30px rgba(212, 88, 10, 0.1);
+      }
+      .btn-modal-trigger:active {
+        transform: scale(0.99);
+      }
+      .btn-modal-trigger.btn-primary {
+        width: auto;
+        margin-top: 0;
+        color: var(--text-inverse);
+        border-color: rgba(0, 0, 0, 0.12);
+        background: linear-gradient(180deg, var(--orange-bright), var(--orange-deep));
+      }
+      .btn-modal-trigger.btn-primary:hover {
+        color: var(--text-primary);
+        border-color: var(--orange-primary);
+        background: linear-gradient(180deg, rgba(255, 252, 245, 0.98), rgba(255, 228, 196, 0.55));
+        box-shadow: 0 10px 30px rgba(212, 88, 10, 0.12);
+      }
+      .btn-modal-trigger.btn-primary:hover::before {
+        opacity: 0;
+        animation: none;
+      }
+      .btn-modal-trigger.btn-primary:focus-visible {
+        outline: 2px solid var(--orange-primary);
+        outline-offset: 2px;
+      }
+      .dashboard {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 20px;
+      }
+      @media (max-width: 1200px) {
+        .dashboard {
+          grid-template-columns: repeat(8, 1fr);
+        }
+      }
+      @media (max-width: 900px) {
+        .dashboard {
+          grid-template-columns: 1fr;
+        }
+      }
+      .panel {
+        background: var(--surface-card);
+        border: 1px solid var(--border-subtle);
+        border-radius: 16px;
+        padding: 24px;
+        backdrop-filter: blur(8px);
+        position: relative;
+        overflow: hidden;
+        transition: border-color 220ms var(--ease-smooth), box-shadow 220ms var(--ease-smooth),
+          transform 220ms var(--ease-smooth);
+      }
+      .panel::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 1px;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(255, 255, 255, 0.8),
+          transparent
+        );
+        opacity: 0.9;
+      }
+      .panel:hover {
+        border-color: var(--border-medium);
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.06);
+      }
+      .panel.card-enter {
+        animation: card-enter 520ms var(--ease-smooth) both;
+      }
+      @keyframes card-enter {
+        from {
+          transform: translateY(16px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+      .panel-title {
+        font-family: var(--font-ui);
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--text-muted);
+        margin: 0 0 14px;
+      }
+      .span-4 {
+        grid-column: span 4;
+      }
+      @media (max-width: 1200px) {
+        .span-4 {
+          grid-column: span 8;
+        }
+      }
+      @media (max-width: 900px) {
+        .span-4 {
+          grid-column: 1 / -1;
+        }
+      }
+      .span-8 {
+        grid-column: span 8;
+      }
+      @media (max-width: 900px) {
+        .span-8 {
+          grid-column: 1 / -1;
+        }
+      }
+      label.small {
+        display: block;
+        font-size: 11px;
+        color: var(--text-muted);
+        margin: 10px 0 6px;
+      }
+      input.input {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid var(--border-medium);
+        background: var(--surface-inset);
+        font-family: var(--font-mono);
+        font-size: 12px;
+        outline: none;
+      }
+      input.input:focus {
+        border-color: var(--orange-primary);
+        box-shadow: 0 0 0 3px var(--orange-glow);
+      }
+      .btn-primary {
+        margin-top: 12px;
+        width: 100%;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(0, 0, 0, 0.12);
+        background: linear-gradient(180deg, var(--orange-bright), var(--orange-deep));
+        color: var(--text-inverse);
+        font-weight: 600;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+      }
+      .btn-primary::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        transform: translateX(-120%);
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(255, 255, 255, 0.35),
+          transparent
+        );
+        opacity: 0;
+      }
+      .btn-primary:hover::before {
+        opacity: 1;
+        animation: shimmer-sweep 900ms var(--ease-smooth) both;
+      }
+      .btn-primary:active {
+        transform: scale(0.97);
+      }
+      @keyframes shimmer-sweep {
+        0% {
+          transform: translateX(-120%);
+        }
+        100% {
+          transform: translateX(120%);
+        }
+      }
+      .timeline {
+        margin-top: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+      .stage {
+        display: grid;
+        grid-template-columns: 34px 1fr auto;
+        gap: 10px;
+        align-items: center;
+        position: relative;
+        padding-bottom: 14px;
+      }
+      .stage:last-child {
+        padding-bottom: 0;
+      }
+      .rail {
+        position: absolute;
+        left: 11px;
+        top: 26px;
+        bottom: -6px;
+        width: 2px;
+        background: rgba(180, 150, 100, 0.25);
+        overflow: hidden;
+      }
+      .stage:last-child .rail {
+        display: none;
+      }
+      .rail-fill {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 0%;
+        background: linear-gradient(180deg, var(--orange-primary), #52a878);
+        clip-path: inset(0 0 0 0);
+        animation: rail-grow 700ms var(--ease-smooth) forwards;
+        animation-play-state: paused;
+      }
+      .stage.done .rail-fill {
+        animation-play-state: running;
+        height: 100%;
+      }
+      @keyframes rail-grow {
+        from {
+          height: 0%;
+        }
+        to {
+          height: 100%;
+        }
+      }
+      .node {
+        width: 24px;
+        height: 24px;
+        border-radius: 999px;
+        border: 2px solid rgba(180, 150, 100, 0.35);
+        background: var(--cream-mid);
+        display: grid;
+        place-items: center;
+        z-index: 1;
+      }
+      .node.running {
+        background: var(--orange-primary);
+        animation: pulse-ring 1.8s infinite;
+      }
+      .node.pass {
+        background: #52a878;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 800;
+      }
+      .node.fail {
+        background: #c94040;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 800;
+      }
+      .node.blocked {
+        background: #c97a10;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 900;
+      }
+      .chip {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--border-subtle);
+        background: rgba(255, 252, 245, 0.65);
+        color: var(--text-secondary);
+      }
+      .terminal {
+        background: #1c1508;
+        border-radius: 10px;
+        border: 1px solid rgba(212, 88, 10, 0.2);
+        font-family: var(--font-mono);
+        font-size: 11.5px;
+        height: 320px;
+        overflow: auto;
+        color: rgba(245, 240, 232, 0.92);
+      }
+      .term-bar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(212, 88, 10, 0.15);
+      }
+      .dots {
+        display: inline-flex;
+        gap: 6px;
+      }
+      .dots i {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        display: inline-block;
+      }
+      .dots i:nth-child(1) {
+        background: #ff5f56;
+      }
+      .dots i:nth-child(2) {
+        background: #ffbd2e;
+      }
+      .dots i:nth-child(3) {
+        background: #27c93f;
+      }
+      .term-title {
+        flex: 1;
+        text-align: center;
+        letter-spacing: 0.12em;
+        font-size: 11px;
+        color: rgba(245, 240, 232, 0.55);
+      }
+      .term-body {
+        padding: 12px 12px 16px;
+        min-height: 200px;
+      }
+      .term-empty {
+        color: rgba(245, 240, 232, 0.45);
+        font-size: 12px;
+        line-height: 1.55;
+        padding: 24px 8px;
+        text-align: center;
+      }
+      .term-stats {
+        margin-bottom: 14px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(212, 88, 10, 0.22);
+        background: rgba(212, 88, 10, 0.08);
+      }
+      .term-stats-head {
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: rgba(212, 88, 10, 0.75);
+        margin-bottom: 8px;
+      }
+      .term-stat-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px 12px;
+      }
+      @media (max-width: 700px) {
+        .term-stat-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      .term-stat .k {
+        font-size: 9px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: rgba(245, 240, 232, 0.45);
+      }
+      .term-stat .v {
+        margin-top: 2px;
+        font-size: 13px;
+        font-weight: 600;
+        color: rgba(245, 240, 232, 0.95);
+      }
+      .term-stat .v.ok {
+        color: #6fcf97;
+      }
+      .term-stat .v.warn {
+        color: #e8b86d;
+      }
+      .term-stat .v.err {
+        color: #e88b8b;
+      }
+      .log-divider {
+        margin: 10px 0 8px;
+        font-size: 9px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: rgba(245, 240, 232, 0.35);
+      }
+      .log-line {
+        margin: 6px 0;
+        line-height: 1.45;
+        animation: log-enter 420ms var(--ease-smooth) both;
+      }
+      .log-line.dim {
+        opacity: 0.72;
+      }
+      @keyframes log-enter {
+        from {
+          transform: translateX(-4px);
+          opacity: 0;
+        }
+        to {
+          transform: translateX(0);
+          opacity: 1;
+        }
+      }
+      .ts {
+        color: rgba(212, 88, 10, 0.5);
+        margin-right: 8px;
+      }
+      .badge {
+        display: inline-flex;
+        margin-right: 8px;
+        padding: 2px 6px;
+        border-radius: 6px;
+        font-size: 10px;
+        letter-spacing: 0.06em;
+      }
+      .badge.info {
+        background: rgba(82, 168, 120, 0.18);
+        color: rgba(82, 168, 120, 0.95);
+      }
+      .badge.warn {
+        background: rgba(201, 122, 16, 0.18);
+        color: rgba(201, 122, 16, 0.95);
+      }
+      .badge.err {
+        background: rgba(201, 64, 64, 0.18);
+        color: rgba(201, 64, 64, 0.95);
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      .metric {
+        border-radius: 12px;
+        border: 1px solid var(--border-subtle);
+        background: rgba(28, 21, 8, 0.04);
+        padding: 10px 12px;
+      }
+      .metric .k {
+        font-size: 11px;
+        color: var(--text-muted);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .metric .v {
+        margin-top: 6px;
+        font-family: var(--font-mono);
+        font-size: 20px;
+        color: var(--text-primary);
+      }
+      textarea.dark {
+        width: 100%;
+        min-height: 120px;
+        resize: vertical;
+        border-radius: 10px;
+        border: 1px solid rgba(212, 88, 10, 0.2);
+        background: #1c1508;
+        color: rgba(245, 240, 232, 0.85);
+        font-family: var(--font-mono);
+        font-size: 12px;
+        padding: 12px;
+        outline: none;
+      }
+      .toggle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 12px 0;
+      }
+      .switch {
+        width: 40px;
+        height: 22px;
+        border-radius: 999px;
+        background: rgba(180, 150, 100, 0.25);
+        position: relative;
+        cursor: pointer;
+        border: 1px solid var(--border-subtle);
+      }
+      .switch::after {
+        content: "";
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        background: #fff;
+        position: absolute;
+        top: 1px;
+        left: 2px;
+        transition: transform 320ms var(--ease-spring), background 200ms var(--ease-smooth);
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+      }
+      .switch input {
+        display: none;
+      }
+      .switch input:checked + .slider-track {
+        background: rgba(212, 88, 10, 0.35);
+      }
+      .switch input:checked ~ .thumb {
+        transform: translateX(18px);
+      }
+      .switch .slider-track {
+        position: absolute;
+        inset: 0;
+        border-radius: 999px;
+      }
+      .switch .thumb {
+        position: absolute;
+        top: 1px;
+        left: 2px;
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        background: #fff;
+        transition: transform 320ms var(--ease-spring);
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+      }
+      .switch.on {
+        background: rgba(212, 88, 10, 0.35);
+      }
+      .switch.on .thumb {
+        transform: translateX(18px);
+      }
+      .progress-indeterminate {
+        height: 3px;
+        border-radius: 999px;
+        background: rgba(180, 150, 100, 0.25);
+        overflow: hidden;
+        margin-top: 10px;
+        display: none;
+      }
+      .progress-indeterminate.on {
+        display: block;
+      }
+      .progress-indeterminate::after {
+        content: "";
+        display: block;
+        height: 100%;
+        width: 40%;
+        background: linear-gradient(90deg, transparent, var(--orange-bright), transparent);
+        animation: progress-indeterminate 1.1s infinite linear;
+      }
+      @keyframes progress-indeterminate {
+        0% {
+          transform: translateX(-120%);
+        }
+        100% {
+          transform: translateX(260%);
+        }
+      }
+      .artifact-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .artifact {
+        border: 1px solid var(--border-subtle);
+        border-radius: 12px;
+        padding: 12px;
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        transition: transform 180ms var(--ease-smooth), border-color 180ms var(--ease-smooth);
+        animation: artifact-enter 520ms var(--ease-smooth) both;
+      }
+      @keyframes artifact-enter {
+        from {
+          transform: translateY(8px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+      .artifact:hover {
+        transform: translateX(2px);
+        border-color: rgba(212, 88, 10, 0.55);
+      }
+      .empty-art {
+        padding: 18px;
+        border-radius: 14px;
+        border: 1px dashed var(--border-medium);
+        color: var(--text-muted);
+        display: grid;
+        place-items: center;
+        gap: 10px;
+        text-align: center;
+      }
+      #connection-toast {
+        position: fixed;
+        right: 18px;
+        bottom: 18px;
+        z-index: 1200;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid var(--border-medium);
+        background: var(--surface-card);
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.18);
+        display: none;
+        max-width: 360px;
+        font-size: 13px;
+        color: var(--text-secondary);
+        animation: toast-in 260ms var(--ease-smooth) both;
+      }
+      @keyframes toast-in {
+        from {
+          transform: translateY(20px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+      @keyframes slideUp {
+        from {
+          transform: translateY(18px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(26, 18, 8, 0.7);
+        backdrop-filter: blur(6px);
+        z-index: 1000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        animation: fadeIn 200ms ease;
+      }
+      .modal-container {
+        background: var(--cream);
+        border: 1px solid var(--border-medium);
+        border-radius: 20px;
+        width: 100%;
+        max-width: 720px;
+        max-height: 90vh;
+        overflow: auto;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.2);
+        animation: slideUp 300ms var(--ease-spring);
+      }
+      .modal-head {
+        display: flex;
+        gap: 14px;
+        align-items: flex-start;
+        padding: 20px 20px 16px;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+      .modal-head__icon {
+        flex-shrink: 0;
+        width: 44px;
+        height: 44px;
+      }
+      .modal-head__text {
+        flex: 1;
+        min-width: 0;
+      }
+      .modal-head h2 {
+        margin: 0;
+        font-family: var(--font-display);
+        font-size: 22px;
+        line-height: 1.2;
+        color: var(--text-primary);
+      }
+      .modal-head p {
+        margin: 6px 0 0;
+        color: var(--text-muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      .modal-body {
+        padding: 18px 20px;
+      }
+      .modal-body--tight {
+        padding-top: 0;
+      }
+      .modal-foot {
+        padding: 14px 20px 18px;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+        border-top: 1px solid var(--border-subtle);
+        background: rgba(255, 252, 245, 0.55);
+      }
+      .modal-foot .btn-primary {
+        width: auto;
+        min-width: 148px;
+        margin-top: 0;
+        padding: 11px 22px;
+      }
+      .btn-secondary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 11px 18px;
+        border-radius: 12px;
+        border: 1px solid var(--border-medium);
+        background: rgba(255, 252, 245, 0.9);
+        color: var(--text-secondary);
+        font-family: var(--font-ui);
+        font-weight: 600;
+        font-size: 13px;
+        cursor: pointer;
+        transition: border-color 200ms var(--ease-smooth), background 200ms var(--ease-smooth),
+          color 200ms var(--ease-smooth), transform 120ms var(--ease-smooth);
+      }
+      .btn-secondary:hover {
+        border-color: var(--orange-primary);
+        color: var(--text-primary);
+        background: linear-gradient(180deg, rgba(255, 252, 245, 0.98), rgba(255, 228, 196, 0.4));
+      }
+      .btn-secondary:active {
+        transform: scale(0.98);
+      }
+      .btn-close {
+        flex-shrink: 0;
+        padding: 8px 14px;
+        font-size: 12px;
+      }
+      .modal-textarea {
+        display: block;
+        width: 100%;
+        min-height: 148px;
+        max-height: 320px;
+        margin-top: 6px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid var(--border-medium);
+        background: var(--surface-inset);
+        color: var(--text-primary);
+        font-family: var(--font-mono);
+        font-size: 12px;
+        line-height: 1.55;
+        outline: none;
+        resize: vertical;
+        transition: border-color 200ms var(--ease-smooth), box-shadow 200ms var(--ease-smooth);
+      }
+      .modal-textarea:focus {
+        border-color: var(--orange-primary);
+        box-shadow: 0 0 0 3px var(--orange-glow);
+      }
+      .modal-textarea.dark {
+        background: #1c1508;
+        color: rgba(245, 240, 232, 0.9);
+        border-color: rgba(212, 88, 10, 0.25);
+      }
+      .modal-divider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 20px 0 16px;
+        color: var(--text-muted);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      .modal-divider::before,
+      .modal-divider::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: var(--border-subtle);
+      }
+      .file-input-wrap {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 6px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px dashed var(--border-medium);
+        background: rgba(255, 252, 245, 0.65);
+        transition: border-color 200ms var(--ease-smooth), background 200ms var(--ease-smooth);
+      }
+      .file-input-wrap:hover {
+        border-color: var(--orange-primary);
+        background: var(--orange-glow);
+      }
+      .file-input-wrap input[type="file"] {
+        width: 100%;
+        font-family: var(--font-ui);
+        font-size: 12px;
+        color: var(--text-secondary);
+        cursor: pointer;
+      }
+      .file-input-wrap input[type="file"]::file-selector-button {
+        margin-right: 12px;
+        padding: 8px 14px;
+        border-radius: 8px;
+        border: 1px solid var(--border-medium);
+        background: linear-gradient(180deg, var(--orange-bright), var(--orange-deep));
+        color: var(--text-inverse);
+        font-family: var(--font-ui);
+        font-weight: 600;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .modal-results {
+        margin-top: 4px;
+      }
+      .modal-results pre.code {
+        margin: 0;
+        max-height: 360px;
+      }
+      .git-dropzone {
+        border: 2px dashed rgba(212, 88, 10, 0.4);
+        border-radius: 14px;
+        padding: 32px 24px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 200ms ease;
+      }
+      .dropzone-title {
+        margin-top: 10px;
+        font-size: 14px;
+        color: var(--text-secondary);
+        line-height: 1.45;
+      }
+      .dropzone-hint {
+        margin-top: 6px;
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+      @media (max-width: 520px) {
+        .modal-foot {
+          flex-direction: column-reverse;
+          align-items: stretch;
+        }
+        .modal-foot .btn-primary,
+        .modal-foot .btn-secondary {
+          width: 100%;
+          min-width: 0;
+        }
+        .modal-head {
+          flex-wrap: wrap;
+        }
+        .btn-close {
+          margin-left: auto;
+        }
+      }
+      .git-dropzone:hover,
+      .git-dropzone.dragover {
+        border-style: solid;
+        border-color: var(--orange-primary);
+        background: var(--orange-glow);
+      }
+      .file-list {
+        margin-top: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .file-item {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border-subtle);
+        background: rgba(255, 252, 245, 0.65);
+        font-size: 12px;
+      }
+      .severity-critical {
+        background: rgba(201, 64, 64, 0.15);
+        color: #a32d2d;
+        border: 1px solid rgba(201, 64, 64, 0.3);
+      }
+      .severity-high {
+        background: rgba(201, 122, 16, 0.15);
+        color: #7a5a10;
+        border: 1px solid rgba(201, 122, 16, 0.25);
+      }
+      .severity-medium {
+        background: rgba(212, 88, 10, 0.15);
+        color: #7a3505;
+        border: 1px solid rgba(212, 88, 10, 0.25);
+      }
+      .severity-low {
+        background: rgba(82, 168, 120, 0.15);
+        color: #1e5c3a;
+        border: 1px solid rgba(82, 168, 120, 0.25);
+      }
+      pre.code {
+        background: #1c1508;
+        color: rgba(245, 240, 232, 0.85);
+        font-family: var(--font-mono);
+        font-size: 11px;
+        border-radius: 8px;
+        padding: 10px 14px;
+        overflow: auto;
+        border: 1px solid rgba(212, 88, 10, 0.18);
+      }
+      .issue-card {
+        border: 1px solid var(--border-subtle);
+        border-radius: 12px;
+        padding: 12px;
+        margin-top: 10px;
+        background: rgba(255, 252, 245, 0.65);
+      }
+      .inline-err {
+        color: #a32d2d;
+        font-size: 12px;
+        margin-top: 8px;
+        display: none;
+      }
+      .inline-err.on {
+        display: block;
+      }
+      ::selection {
+        background: var(--orange-glow-strong);
+        color: var(--text-primary);
+      }
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--sand) transparent;
+      }
+      .span-12 {
+        grid-column: 1 / -1;
+      }
+      .switch:has(.thumb)::after {
+        content: none;
+      }
+      .hint {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 10px;
+        line-height: 1.5;
+      }
+      .runtime-banner {
+        margin: 0 0 16px;
+        padding: 10px 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(201, 64, 64, 0.3);
+        background: rgba(201, 64, 64, 0.08);
+        color: var(--text-secondary);
+        font-size: 13px;
+      }
+      .btn-row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+      .btn-primary:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .btn-danger {
+        background: linear-gradient(180deg, #d65a5a, #a83232);
+      }
+      .run-meta {
+        margin-top: 12px;
+        font-size: 12px;
+        color: var(--text-secondary);
+        line-height: 1.6;
+        word-break: break-word;
+      }
+      .run-meta .err {
+        color: #a32d2d;
+      }
+      .run-diagnostics {
+        margin-top: 12px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        border: 1px solid rgba(201, 122, 16, 0.25);
+        background: rgba(201, 122, 16, 0.06);
+        font-size: 13px;
+        line-height: 1.45;
+        color: var(--text-primary);
+      }
+      .run-diagnostics h4 {
+        margin: 0 0 8px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .run-diagnostics ol {
+        margin: 6px 0 0 18px;
+        padding: 0;
+      }
+      .run-diagnostics li { margin-bottom: 4px; }
+      .run-diagnostics .evidence {
+        margin-top: 8px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.04);
+        font-family: var(--font-mono);
+        font-size: 12px;
+      }
+      .run-progress {
+        height: 6px;
+        background: rgba(180, 150, 100, 0.25);
+        border-radius: 999px;
+        margin-top: 12px;
+        overflow: hidden;
+      }
+      #run-progress-fill {
+        height: 100%;
+        width: 0;
+        background: linear-gradient(90deg, var(--orange-primary), #52a878);
+        border-radius: 999px;
+        transition: width 400ms var(--ease-smooth);
+      }
+      .chip.done { color: #2f7a52; border-color: rgba(82, 168, 120, 0.4); }
+      .chip.running { color: var(--orange-deep); border-color: rgba(212, 88, 10, 0.4); }
+      .chip.failed { color: #a32d2d; border-color: rgba(201, 64, 64, 0.4); }
+      .chip.skipped { color: var(--text-muted); font-style: italic; }
+      .node.skipped { background: rgba(180, 150, 100, 0.3); }
+      .runs-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .toggle.compact {
+        margin: 0;
+        text-transform: none;
+        letter-spacing: normal;
+      }
+      .muted-label {
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .runs-wrap {
+        max-height: 360px;
+        overflow: auto;
+      }
+      .runs-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12.5px;
+      }
+      .runs-table th {
+        text-align: left;
+        font-weight: 500;
+        font-size: 11px;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--border-subtle);
+        position: sticky;
+        top: 0;
+        background: var(--surface-card);
+      }
+      .runs-table td {
+        padding: 8px;
+        border-bottom: 1px solid var(--border-subtle);
+        white-space: nowrap;
+      }
+      .runs-table tbody tr {
+        cursor: pointer;
+        transition: background 150ms var(--ease-smooth);
+      }
+      .runs-table tbody tr:hover,
+      .runs-table tbody tr.selected {
+        background: rgba(212, 88, 10, 0.07);
+      }
+      .muted-cell {
+        color: var(--text-muted);
+        text-align: center;
+        cursor: default;
+      }
+      .status-pill {
+        display: inline-block;
+        font-family: var(--font-mono);
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--border-subtle);
+      }
+      .status-pill.ok { background: rgba(82, 168, 120, 0.15); color: #2f7a52; }
+      .status-pill.running { background: rgba(212, 88, 10, 0.12); color: var(--orange-deep); }
+      .status-pill.blocked { background: rgba(201, 122, 16, 0.15); color: #8a5208; }
+      .status-pill.bad { background: rgba(201, 64, 64, 0.12); color: #a32d2d; }
+      .status-pill.muted { color: var(--text-muted); }
+      .artifact {
+        flex-direction: column;
+        gap: 6px;
+      }
+      .artifact-head {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        width: 100%;
+      }
+      .artifact-type {
+        font-family: var(--font-mono);
+        font-weight: 700;
+        font-size: 12.5px;
+      }
+      .artifact-time {
+        margin-left: auto;
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+      .artifact-summary {
+        font-size: 13px;
+        color: var(--text-secondary);
+        line-height: 1.5;
+      }
+      .artifact-highlights {
+        margin: 4px 0 0;
+        padding-left: 18px;
+        font-size: 12px;
+        color: var(--text-muted);
+        line-height: 1.45;
+      }
+      .artifact-highlights li {
+        margin: 2px 0;
+      }
+      .artifact details {
+        width: 100%;
+      }
+      .artifact summary {
+        cursor: pointer;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .artifact pre {
+        max-height: 320px;
+        overflow: auto;
+        background: #1c1508;
+        color: rgba(245, 240, 232, 0.9);
+        padding: 10px;
+        border-radius: 8px;
+        font-size: 11.5px;
+      }
+      .mon-result {
+        margin-top: 10px;
+        font-size: 13px;
+        color: var(--text-secondary);
+        line-height: 1.5;
+      }
+      .mon-result ol {
+        margin: 6px 0 0;
+        padding-left: 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <svg style="width: 0; height: 0; position: absolute">
+      <filter id="noiseFilter">
+        <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch" />
+        <feColorMatrix type="saturate" values="0" />
+      </filter>
+    </svg>
+
+    <div class="bg-system" aria-hidden="true">
+      <div class="noise"></div>
+      <div class="glow"></div>
+      <div class="dots"></div>
+    </div>
+
+    <div class="shell">
+      <header class="top">
+        <div class="brand">
+          <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+            <polygon points="32,4 54,18 54,46 32,60 10,46 10,18" fill="none" />
+            <polygon points="32,4 54,18 32,22 10,18" fill="var(--orange-primary)" />
+            <polygon points="54,18 54,46 32,40 32,22" fill="var(--orange-deep)" />
+            <polygon points="10,18 32,22 32,40 10,46" fill="var(--orange-primary)" />
+            <polygon points="32,40 54,46 32,60 10,46" fill="var(--orange-deep)" />
+            <polygon points="32,22 54,18 32,4 10,18" fill="var(--orange-deep)" opacity="0.35" />
+            <polygon points="32,40 54,46 32,60" fill="var(--orange-primary)" opacity="0.55" />
+          </svg>
+          <div>
+            <h1 class="title">ORION CI/CD</h1>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px">
+              Pipeline Console · <span id="api-origin-label">API</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="right-cluster">
+          <div class="pill" id="pill-api" title="API health">
+            <span class="dot warn" id="dot-api"></span>
+            <span>API</span>
+          </div>
+          <div class="pill" id="pill-ws" title="Live pipeline stream">
+            <span class="dot ok" id="dot-ws"></span>
+            <span>WS</span>
+          </div>
+          <div class="pill" id="pill-llm" title="Anthropic integration">
+            <span class="dot off" id="dot-llm"></span>
+            <span>LLM</span>
+          </div>
+
+          <a id="login-btn" class="btn-dark auth-link" data-path="/api/v1/auth/github" href="#"
+            >Login with GitHub</a
+          >
+          <button
+            type="button"
+            class="btn-secondary btn-close"
+            id="settings-btn-guest"
+            style="display: none"
+            onclick="openSettings('console')"
+          >
+            Settings
+          </button>
+          <div class="user-menu" id="user-menu">
+            <button type="button" class="user-menu-trigger" id="user-menu-trigger" aria-haspopup="true" aria-expanded="false">
+              <img id="avatar" alt="" />
+              <span class="mono" id="username">@user</span>
+              <svg class="user-menu-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              </svg>
+            </button>
+            <div class="user-menu-panel" id="user-menu-panel" role="menu">
+              <div class="user-menu-header">
+                <strong id="menu-display-name">Operator</strong>
+                <span id="menu-login-at">Signed in via GitHub</span>
+              </div>
+              <button type="button" class="user-menu-item" role="menuitem" onclick="closeUserMenu(); openSettings('profile')">
+                Profile &amp; settings
+              </button>
+              <button type="button" class="user-menu-item" role="menuitem" onclick="closeUserMenu(); openSettings('github')">
+                GitHub connection
+              </button>
+              <a class="user-menu-item auth-link" role="menuitem" data-path="/api/v1/auth/github" href="#" id="menu-reconnect-github">
+                Reconnect GitHub
+              </a>
+              <a class="user-menu-item danger auth-link" role="menuitem" data-path="/api/v1/auth/logout" href="#" id="logout-link">
+                Sign out
+              </a>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div id="auth-banner">
+        You are not logged in. Auto-PR features require GitHub authentication.
+        <a class="auth-link" data-path="/api/v1/auth/github" href="#">Login</a>
+      </div>
+      <div id="runtime-banner" class="runtime-banner" style="display: none"></div>
+
+      <nav class="orion-nav-hub" aria-label="Binary-v2 platform navigation">
+        <div class="orion-nav-hub__stacks" id="stack-nav-stacks">
+          <span class="orion-nav-hub__label">Stacks</span>
+        </div>
+        <div class="orion-nav-hub__views" id="stack-nav-views">
+          <span class="orion-nav-hub__label">Views</span>
+        </div>
+      </nav>
+
+      <div class="modal-triggers">
+        <button
+          type="button"
+          class="btn-modal-trigger btn-primary"
+          onclick="openModal('modal-git-logs')"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M4 6h16v12H4V6z"
+              stroke="currentColor"
+              stroke-width="1.6"
+            />
+            <path d="M8 10h8M8 14h5" stroke="currentColor" stroke-width="1.6" />
+          </svg>
+          Git Log Analyzer
+        </button>
+        <button
+          type="button"
+          class="btn-modal-trigger btn-primary"
+          onclick="openModal('modal-payment')"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <rect x="3" y="6" width="18" height="12" rx="2" stroke="currentColor" stroke-width="1.6" />
+            <path d="M3 10h18" stroke="currentColor" stroke-width="1.6" />
+          </svg>
+          Payment Analyzer
+        </button>
+        <button type="button" class="btn-modal-trigger btn-primary" onclick="openModal('modal-github-actions')">
+          GitHub Actions Log
+        </button>
+        <button type="button" class="btn-modal-trigger btn-primary" onclick="openModal('modal-dockerfile')">
+          Dockerfile Hardening
+        </button>
+        <button type="button" class="btn-modal-trigger btn-primary" onclick="openModal('modal-triage')">
+          Production Triage
+        </button>
+      </div>
+
+      <div class="dashboard" id="dashboard">
+        <section class="panel span-4 card-enter" style="--i: 0">
+          <div class="panel-title">Run a Pipeline</div>
+          <form id="trigger-form" autocomplete="off" novalidate>
+            <label class="small" for="clone-url">Repository (git URL, or local path in development)</label>
+            <input class="input" id="clone-url" required placeholder="https://github.com/owner/repo.git" />
+            <label class="small" for="branch-input">Branch</label>
+            <input class="input" id="branch-input" value="main" placeholder="main" />
+            <label class="small" for="repo-input">Display name (optional)</label>
+            <input class="input" id="repo-input" placeholder="owner/name" />
+            <button class="btn-primary" type="submit" id="run-btn">Run Pipeline</button>
+          </form>
+          <div class="inline-err" id="trigger-err"></div>
+          <div class="hint" id="runtime-hint"></div>
+        </section>
+
+        <section class="panel span-4 card-enter" style="--i: 1">
+          <div class="panel-title">Pipeline Control</div>
+          <label class="small" for="pipeline-id">Pipeline ID</label>
+          <input class="input" id="pipeline-id" placeholder="select a run below, or paste a uuid" />
+          <div class="btn-row">
+            <button class="btn-primary" type="button" id="refresh-btn">Refresh</button>
+            <button class="btn-primary" type="button" id="retry-btn" disabled>Retry</button>
+            <button class="btn-primary btn-danger" type="button" id="cancel-btn" disabled>Cancel</button>
+          </div>
+          <div class="run-meta" id="run-meta">No run selected.</div>
+
+          <div class="timeline" id="stage-timeline" aria-label="pipeline stages"></div>
+          <div class="run-progress" id="run-progress">
+            <div id="run-progress-fill"></div>
+          </div>
+        </section>
+
+        <section class="panel span-4 card-enter" style="--i: 2">
+          <div class="panel-title">Agent Logs</div>
+          <div class="terminal" id="agent-terminal">
+            <div class="term-bar">
+              <span class="dots"><i></i><i></i><i></i></span>
+              <div class="term-title">AGENT LOGS</div>
+            </div>
+            <div class="term-body" id="term-body"></div>
+          </div>
+        </section>
+
+        <section class="panel span-8 card-enter" style="--i: 3">
+          <div class="panel-title runs-head">
+            <span>Recent Runs</span>
+            <span class="toggle compact">
+              <span class="switch on" id="auto-refresh" role="switch" aria-checked="true" tabindex="0">
+                <span class="slider-track"></span>
+                <span class="thumb"></span>
+              </span>
+              <span class="muted-label">Auto-refresh</span>
+            </span>
+          </div>
+          <div class="runs-wrap">
+            <table class="runs-table" aria-label="recent pipeline runs">
+              <thead>
+                <tr><th>Status</th><th>Repository</th><th>Branch</th><th>Commit</th><th>Started</th><th>Duration</th></tr>
+              </thead>
+              <tbody id="runs-body">
+                <tr><td colspan="6" class="muted-cell">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel span-4 card-enter" style="--i: 4">
+          <div class="panel-title">Monitoring &amp; Log Triage</div>
+          <div class="metrics">
+            <div class="metric" title="Error lines in the last analyzed logs">
+              <div class="k">Errors</div>
+              <div class="v" id="m-err">–</div>
+            </div>
+            <div class="metric" title="Warning lines in the last analyzed logs">
+              <div class="k">Warnings</div>
+              <div class="v" id="m-warn">–</div>
+            </div>
+            <div class="metric" title="API process uptime">
+              <div class="k">Uptime</div>
+              <div class="v" id="m-up">–</div>
+            </div>
+          </div>
+          <div class="hint" id="mon-status">Post-deploy monitoring results appear here for deployed runs.</div>
+          <textarea
+            class="dark"
+            id="mon-input"
+            placeholder="Paste runtime logs here for AI triage…"
+          ></textarea>
+          <button class="btn-primary" type="button" id="mon-analyze">Analyze Logs</button>
+          <div class="progress-indeterminate" id="mon-prog"></div>
+          <div class="mon-result" id="mon-result"></div>
+        </section>
+
+        <section class="panel span-12 card-enter" style="--i: 5">
+          <div class="panel-title">Agent Artifacts</div>
+          <div class="empty-art" id="artifact-empty">
+            <svg width="120" height="72" viewBox="0 0 120 72" fill="none" aria-hidden="true">
+              <path d="M10 58 L40 18 L70 44 L90 22 L110 58 Z" stroke="rgba(180,150,100,0.45)" />
+              <path d="M18 58 L55 30 L75 48 L102 58" stroke="rgba(212,88,10,0.35)" />
+            </svg>
+            <div style="max-width: 520px">
+              No artifacts yet. Select a run, or start one, to see each agent's structured output.
+            </div>
+          </div>
+          <div class="artifact-list" id="artifact-list" style="display: none"></div>
+        </section>
+      </div>
+    </div>
+
+    <div id="connection-toast" role="status" aria-live="polite"></div>
+
+    <div class="modal-overlay" id="modal-intelligence" style="display: none">
+      <div class="modal-container" role="dialog" aria-modal="true" aria-labelledby="intel-title">
+        <div class="modal-head">
+          <div class="modal-head__text">
+            <h2 id="intel-title">ORION Intelligence</h2>
+            <p>Fleet risk, SLO, FinOps, compliance, and agent registry</p>
+          </div>
+          <button class="btn-secondary btn-close" type="button" onclick="closeModal('modal-intelligence')">Close</button>
+        </div>
+        <div class="modal-body" id="intel-dashboard-body">Open to load dashboard…</div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-incidents" style="display: none">
+      <div class="modal-container" role="dialog" aria-modal="true" aria-labelledby="incidents-title">
+        <div class="modal-head">
+          <div class="modal-head__text">
+            <h2 id="incidents-title">Incident Command Center</h2>
+            <p>Lifecycle, RCA, timeline, and runbooks from pipeline incidents</p>
+          </div>
+          <button class="btn-secondary btn-close" type="button" onclick="closeModal('modal-incidents')">Close</button>
+        </div>
+        <div class="modal-body" id="incidents-body">Open to load incidents…</div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-git-logs">
+      <div class="modal-container" role="dialog" aria-modal="true" aria-labelledby="git-title">
+        <div class="modal-head">
+          <div class="modal-head__icon">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M4 6h16v12H4V6z"
+                stroke="var(--orange-primary)"
+                stroke-width="1.6"
+              />
+              <path d="M8 10h8M8 14h5" stroke="var(--orange-primary)" stroke-width="1.6" />
+            </svg>
+          </div>
+          <div class="modal-head__text">
+            <h2 id="git-title">Git Log Analyzer</h2>
+            <p>Drop logs, screenshots, or ZIP files — AI finds every error</p>
+          </div>
+          <button class="btn-secondary btn-close" type="button" onclick="closeModal('modal-git-logs')">
+            Close
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="git-dropzone" id="git-dropzone">
+            <div>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M12 3v10"
+                  stroke="var(--orange-primary)"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M8 7l4-4 4 4"
+                  stroke="var(--orange-primary)"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M4 14v4a3 3 0 003 3h10a3 3 0 003-3v-4"
+                  stroke="var(--orange-primary)"
+                  stroke-width="1.6"
+                />
+              </svg>
+              <div class="dropzone-title">
+                Drop log files, screenshots, or GitHub Actions ZIP here
+              </div>
+              <div class="dropzone-hint">
+                Supports: .log .txt .zip .png .jpg .csv
+              </div>
+            </div>
+            <input
+              id="git-file-input"
+              type="file"
+              multiple
+              accept=".log,.txt,.zip,.png,.jpg,.jpeg,.csv"
+              style="display: none"
+            />
+          </div>
+          <div class="file-list" id="git-file-list"></div>
+
+          <div class="modal-divider"><span>or paste logs</span></div>
+          <label class="small" for="git-text-input">Paste log output</label>
+          <textarea
+            id="git-text-input"
+            class="modal-textarea"
+            placeholder="Paste your log output directly here…
+
+Example:
+2026-03-22T10:12:06Z ERROR timeout connecting to db
+2026-03-22T10:12:07Z FATAL build failed: missing module"
+          ></textarea>
+          <div class="inline-err" id="git-inline-err"></div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn-secondary" type="button" onclick="closeModal('modal-git-logs')">
+            Cancel
+          </button>
+          <button class="btn-primary" type="button" id="git-analyze-btn" onclick="runGitAnalysis()">
+            Analyze
+          </button>
+        </div>
+        <div class="modal-body modal-body--tight">
+          <div id="git-results" class="results-container modal-results" style="display: none"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-payment">
+      <div class="modal-container" role="dialog" aria-modal="true" aria-labelledby="pay-title">
+        <div class="modal-head">
+          <div style="width: 44px; height: 44px">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none">
+              <rect x="3" y="6" width="18" height="12" rx="2" stroke="var(--orange-primary)" stroke-width="1.6" />
+              <path d="M3 10h18" stroke="var(--orange-primary)" stroke-width="1.6" />
+            </svg>
+          </div>
+          <div style="flex: 1">
+            <h2 id="pay-title">Payment Analyzer</h2>
+            <p>Upload CSV exports, screenshots, or paste webhook data</p>
+          </div>
+          <button class="btn-modal-trigger" type="button" onclick="closeModal('modal-payment')">
+            Close
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="git-dropzone" id="pay-dropzone">
+            <div>
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M12 3v10"
+                  stroke="var(--orange-primary)"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M8 7l4-4 4 4"
+                  stroke="var(--orange-primary)"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                />
+                <path
+                  d="M4 14v4a3 3 0 003 3h10a3 3 0 003-3v-4"
+                  stroke="var(--orange-primary)"
+                  stroke-width="1.6"
+                />
+              </svg>
+              <div style="margin-top: 10px; font-size: 14px; color: var(--text-secondary)">
+                Drop payment exports or evidence here
+              </div>
+              <div style="margin-top: 6px; font-size: 11px; color: var(--text-muted)">
+                Supports: .csv .png .jpg .pdf .json
+              </div>
+            </div>
+            <input
+              id="pay-file-input"
+              type="file"
+              multiple
+              accept=".csv,.png,.jpg,.jpeg,.pdf,.json"
+              style="display: none"
+            />
+          </div>
+          <div class="file-list" id="pay-file-list"></div>
+
+          <label class="small" for="pay-text-input">Paste data</label>
+          <textarea
+            id="pay-text-input"
+            class="dark"
+            style="background: #1c1508"
+            placeholder="Paste CSV snippets, webhook JSON, or transaction IDs…"
+          ></textarea>
+          <div class="inline-err" id="pay-inline-err"></div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn-modal-trigger" type="button" onclick="closeModal('modal-payment')">
+            Cancel
+          </button>
+          <button
+            class="btn-primary"
+            type="button"
+            id="pay-analyze-btn"
+            onclick="runPaymentAnalysis()"
+          >
+            Analyze
+          </button>
+        </div>
+        <div class="modal-body" style="padding-top: 0">
+          <div id="payment-results" style="display: none"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-github-actions">
+      <div class="modal-container" role="dialog" aria-modal="true" aria-labelledby="gh-actions-title">
+        <div class="modal-head">
+          <div class="modal-head__text">
+            <h2 id="gh-actions-title">GitHub Actions Log</h2>
+            <p>Analyze failed workflow logs and surface root causes</p>
+          </div>
+          <button class="btn-secondary btn-close" type="button" onclick="closeModal('modal-github-actions')">Close</button>
+        </div>
+        <div class="modal-body">
+          <label class="small" for="gh-actions-text">Paste log output</label>
+          <textarea
+            id="gh-actions-text"
+            class="modal-textarea"
+            placeholder="Paste GitHub Actions log output…"
+          ></textarea>
+          <div class="modal-divider"><span>or upload files</span></div>
+          <label class="small" for="gh-actions-file">Attach workflow logs</label>
+          <div class="file-input-wrap">
+            <input id="gh-actions-file" type="file" multiple accept=".log,.txt,.zip" />
+          </div>
+          <div class="inline-err" id="gh-actions-err"></div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn-secondary" type="button" onclick="closeModal('modal-github-actions')">Cancel</button>
+          <button class="btn-primary" type="button" onclick="runMultimodalAgent('github_actions','gh-actions-text','gh-actions-file','gh-actions-err','gh-actions-results')">Analyze</button>
+        </div>
+        <div class="modal-body modal-body--tight modal-results">
+          <pre id="gh-actions-results" class="code" style="display:none"></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-dockerfile">
+      <div class="modal-container" role="dialog" aria-modal="true" aria-labelledby="docker-title">
+        <div class="modal-head">
+          <div class="modal-head__text">
+            <h2 id="docker-title">Dockerfile Hardening</h2>
+            <p>Security review and optional auto-PR for container images</p>
+          </div>
+          <button class="btn-secondary btn-close" type="button" onclick="closeModal('modal-dockerfile')">Close</button>
+        </div>
+        <div class="modal-body">
+          <label class="small" for="docker-text">Paste Dockerfile or build log</label>
+          <textarea
+            id="docker-text"
+            class="modal-textarea"
+            placeholder="Paste Dockerfile or build log…"
+          ></textarea>
+          <div class="modal-divider"><span>or upload files</span></div>
+          <label class="small" for="docker-file">Attach Dockerfile / logs</label>
+          <div class="file-input-wrap">
+            <input id="docker-file" type="file" multiple accept=".dockerfile,Dockerfile,.txt,.log" />
+          </div>
+          <div class="inline-err" id="docker-err"></div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn-secondary" type="button" onclick="closeModal('modal-dockerfile')">Cancel</button>
+          <button class="btn-primary" type="button" onclick="runMultimodalAgent('dockerfile','docker-text','docker-file','docker-err','docker-results')">Analyze</button>
+        </div>
+        <div class="modal-body modal-body--tight modal-results">
+          <pre id="docker-results" class="code" style="display:none"></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-triage">
+      <div class="modal-container" role="dialog" aria-modal="true" aria-labelledby="triage-title">
+        <div class="modal-head">
+          <div class="modal-head__text">
+            <h2 id="triage-title">Production Triage</h2>
+            <p>P1 incident analysis from logs, alerts, and screenshots</p>
+          </div>
+          <button class="btn-secondary btn-close" type="button" onclick="closeModal('modal-triage')">Close</button>
+        </div>
+        <div class="modal-body">
+          <label class="small" for="triage-text">Paste incident details</label>
+          <textarea
+            id="triage-text"
+            class="modal-textarea"
+            placeholder="Paste incident timeline, alerts, or error output…"
+          ></textarea>
+          <div class="modal-divider"><span>or upload evidence</span></div>
+          <label class="small" for="triage-file">Attach logs or screenshots</label>
+          <div class="file-input-wrap">
+            <input id="triage-file" type="file" multiple accept=".log,.txt,.png,.jpg,.jpeg,.zip,.csv" />
+          </div>
+          <div class="inline-err" id="triage-err"></div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn-secondary" type="button" onclick="closeModal('modal-triage')">Cancel</button>
+          <button class="btn-primary" type="button" onclick="runMultimodalAgent('production_triage','triage-text','triage-file','triage-err','triage-results')">Analyze</button>
+        </div>
+        <div class="modal-body modal-body--tight modal-results">
+          <pre id="triage-results" class="code" style="display:none"></pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-settings">
+      <div class="modal-container" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="modal-head">
+          <div class="modal-head__text">
+            <h2 id="settings-title">Profile &amp; Settings</h2>
+            <p>Manage your ORION console, GitHub auth, and pipeline defaults</p>
+          </div>
+          <button class="btn-secondary btn-close" type="button" onclick="closeModal('modal-settings')">Close</button>
+        </div>
+        <div class="modal-body">
+          <div class="settings-tabs" role="tablist">
+            <button type="button" class="settings-tab active" data-settings-tab="profile" role="tab">Profile</button>
+            <button type="button" class="settings-tab" data-settings-tab="github" role="tab">GitHub</button>
+            <button type="button" class="settings-tab" data-settings-tab="pipeline" role="tab">Pipeline</button>
+            <button type="button" class="settings-tab" data-settings-tab="console" role="tab">Console</button>
+          </div>
+
+          <div class="settings-panel active" id="settings-panel-profile" role="tabpanel">
+            <div class="settings-card" id="settings-profile-card">
+              <h3>GitHub profile</h3>
+              <p>Sign in to link your GitHub identity for Auto-PR and private repository access.</p>
+              <dl class="settings-kv">
+                <dt>Username</dt><dd id="set-username">—</dd>
+                <dt>Display name</dt><dd id="set-name">—</dd>
+                <dt>Signed in</dt><dd id="set-login-at">—</dd>
+              </dl>
+            </div>
+          </div>
+
+          <div class="settings-panel" id="settings-panel-github" role="tabpanel">
+            <div class="settings-card">
+              <h3>GitHub OAuth</h3>
+              <p>ORION uses GitHub OAuth for pipeline triggers, commit statuses, and Auto-PR branches.</p>
+              <div id="set-github-status" class="settings-status warn">Checking…</div>
+              <dl class="settings-kv" style="margin-top: 12px">
+                <dt>Callback URL</dt><dd id="set-oauth-callback">—</dd>
+                <dt>Scopes</dt><dd id="set-oauth-scopes">repo, read:user, user:email</dd>
+                <dt>Client ID</dt><dd id="set-oauth-client">—</dd>
+              </dl>
+              <div style="margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap">
+                <a class="btn-primary auth-link" data-path="/api/v1/auth/github" href="#" id="set-github-login" style="width: auto; margin-top: 0; text-decoration: none; display: inline-flex">Connect GitHub</a>
+                <a class="btn-secondary auth-link" data-path="/api/v1/auth/github" href="#" id="set-github-reconnect" style="display: none">Reconnect</a>
+                <a class="btn-secondary auth-link" data-path="/api/v1/auth/logout" href="#" id="set-github-logout" style="display: none">Disconnect</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-panel" id="settings-panel-pipeline" role="tabpanel">
+            <div class="settings-card">
+              <h3>Pipeline defaults</h3>
+              <p>Applied to the Run Pipeline form after you save. Stored on the server when signed in.</p>
+              <label class="small" for="set-default-repo-url">Default repository URL</label>
+              <input class="input" id="set-default-repo-url" placeholder="https://github.com/owner/repo.git" />
+              <label class="small" for="set-default-repo-name">Display name (owner/repo)</label>
+              <input class="input" id="set-default-repo-name" placeholder="owner/name" />
+              <label class="small" for="set-default-branch">Default branch</label>
+              <input class="input" id="set-default-branch" placeholder="main" />
+              <div class="settings-toggle">
+                <span>Enable Auto-PR on pipeline blocks</span>
+                <div class="switch on" id="set-auto-pr" role="switch" aria-checked="true" tabindex="0"><div class="thumb"></div></div>
+              </div>
+              <div class="settings-toggle">
+                <span>Notify when a run is blocked</span>
+                <div class="switch on" id="set-notify-block" role="switch" aria-checked="true" tabindex="0"><div class="thumb"></div></div>
+              </div>
+              <div class="settings-save-msg" id="settings-pipeline-msg"></div>
+            </div>
+          </div>
+
+          <div class="settings-panel" id="settings-panel-console" role="tabpanel">
+            <div class="settings-card">
+              <h3>Console</h3>
+              <p>Point this dashboard at a different ORION API instance (saved in your browser).</p>
+              <label class="small" for="set-api-base">API base URL</label>
+              <input class="input" id="set-api-base" placeholder="http://127.0.0.1:8001" />
+              <p class="hint">Use <code class="mono">?api=reset</code> in the URL to clear this override.</p>
+              <dl class="settings-kv" style="margin-top: 12px">
+                <dt>Environment</dt><dd id="set-platform-env">—</dd>
+                <dt>Deploy mode</dt><dd id="set-platform-deploy">—</dd>
+                <dt>API docs</dt><dd><a id="set-platform-docs" href="#" target="_blank" rel="noreferrer">Open /docs</a></dd>
+              </dl>
+              <div class="settings-save-msg" id="settings-console-msg"></div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn-secondary" type="button" onclick="closeModal('modal-settings')">Close</button>
+          <button class="btn-primary" type="button" id="settings-save-btn" onclick="saveSettings()">Save settings</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // API base: ?api=<url> (remembered; ?api=reset clears) > same origin at /ui > configured default.
+      const DEFAULT_API = "http://127.0.0.1:8001";
+      const API = (() => {
+        const param = new URLSearchParams(location.search).get("api");
+        if (param === "reset") localStorage.removeItem("orion.api");
+        else if (param) localStorage.setItem("orion.api", param.replace(/\/+$/, ""));
+        const stored = localStorage.getItem("orion.api");
+        if (stored) return stored;
+        if (location.protocol.startsWith("http") && location.pathname.startsWith("/ui")) return location.origin;
+        return DEFAULT_API;
+      })();
+      const WS_BASE = API.replace(/^http/, "ws");
+
+      function wireAuthLinks() {
+        document.querySelectorAll(".auth-link").forEach((a) => {
+          a.href = API + a.dataset.path;
+        });
+      }
+
+      async function renderNavigation() {
+        const stacksHost = document.getElementById("stack-nav-stacks");
+        const viewsHost = document.getElementById("stack-nav-views");
+        let nav = null;
+        try {
+          nav = await api("/api/v1/runtime/navigation");
+        } catch {
+          nav = null;
+        }
+        const stacks = (nav && nav.stacks) || [
+          { id: "hub", short: "Hub", ui: "http://127.0.0.1:5180" },
+          { id: "canonical", short: "Console", ui: "http://127.0.0.1:5173" },
+          { id: "orion", short: "ORION", ui: `${API}/ui/` },
+          { id: "platform", short: "Platform", ui: "http://127.0.0.1:3000" },
+        ];
+        const active = (nav && nav.active_stack) || "orion";
+        const views = (nav && nav.views) || [
+          { id: "pipeline", label: "Pipeline", href: "#dashboard" },
+          { id: "intelligence", label: "Intelligence", href: "#intelligence", modal: "modal-intelligence" },
+          { id: "incidents", label: "Incidents", href: "#incidents", modal: "modal-incidents" },
+          { id: "settings", label: "Settings", href: "#settings", modal: "modal-settings" },
+        ];
+        if (nav && nav.product) document.title = `${nav.product} — Pipeline Console`;
+        const originLabel = document.getElementById("api-origin-label");
+        if (originLabel) originLabel.textContent = API.replace(/^https?:\/\//, "");
+        stacksHost.innerHTML =
+          `<span class="orion-nav-hub__label">Stacks</span>` +
+          stacks
+            .filter((s) => s.ui)
+            .map((s) => {
+              const isActive = s.id === active;
+              const label = escapeHtml(s.short || s.title);
+              if (isActive) {
+                return `<span class="orion-nav-pill orion-nav-pill--active" aria-current="page">${label}</span>`;
+              }
+              return `<a class="orion-nav-pill" href="${escapeHtml(s.ui)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(s.title || s.short)}">${label}</a>`;
+            })
+            .join("");
+        viewsHost.innerHTML =
+          `<span class="orion-nav-hub__label">Views</span>` +
+          views
+            .map((v) => {
+              const href = escapeHtml(v.href || "#");
+              if (v.modal) {
+                return `<a class="orion-nav-pill" href="${href}" data-view="${escapeHtml(v.id)}" data-modal="${escapeHtml(v.modal)}">${escapeHtml(v.label)}</a>`;
+              }
+              return `<a class="orion-nav-pill" href="${href}" data-view="${escapeHtml(v.id)}">${escapeHtml(v.label)}</a>`;
+            })
+            .join("");
+        wireViewNavigation();
+      }
+
+      function wireViewNavigation() {
+        document.querySelectorAll("#stack-nav-views [data-view]").forEach((el) => {
+          el.addEventListener("click", (e) => {
+            e.preventDefault();
+            const view = el.dataset.view;
+            const modal = el.dataset.modal;
+            document.querySelectorAll("#stack-nav-views .orion-nav-pill").forEach((pill) => {
+              pill.classList.toggle("orion-nav-pill--active", pill === el);
+            });
+            if (modal) {
+              openModal(modal);
+              history.replaceState(null, "", `#${view}`);
+              return;
+            }
+            if (view === "pipeline" || view === "dashboard") {
+              document.getElementById("dashboard")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              history.replaceState(null, "", "#dashboard");
+              return;
+            }
+            if (view === "settings") {
+              openSettings("profile");
+              return;
+            }
+            const href = el.getAttribute("href");
+            if (href && href.startsWith("#")) {
+              history.replaceState(null, "", href);
+              document.querySelector(href)?.scrollIntoView({ behavior: "smooth", block: "start" });
+            }
+          });
+        });
+        applyViewFromHash();
+        window.addEventListener("hashchange", applyViewFromHash);
+      }
+
+      function applyViewFromHash() {
+        const hash = (location.hash || "").replace(/^#/, "");
+        const viewsHost = document.getElementById("stack-nav-views");
+        if (!viewsHost) return;
+        const activeView = hash || "pipeline";
+        viewsHost.querySelectorAll("[data-view]").forEach((el) => {
+          const view = el.dataset.view;
+          const active =
+            activeView === view ||
+            (activeView === "dashboard" && view === "pipeline");
+          el.classList.toggle("orion-nav-pill--active", active);
+        });
+        if (!hash) return;
+        if (hash === "intelligence") {
+          openModal("modal-intelligence");
+        } else if (hash === "incidents") {
+          openModal("modal-incidents");
+        } else if (hash === "settings") {
+          openSettings("profile");
+        } else if (hash === "dashboard" || hash === "pipeline") {
+          document.getElementById("dashboard")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }
+
+      const TERMINAL = new Set([
+        "deployed", "approved", "rolled_back", "auto_rolled_back", "blocked_code", "blocked_security",
+        "blocked_tests", "blocked_stress", "blocked_secrets", "blocked_policy", "blocked_injection",
+        "blocked_agent_eval", "blocked_with_prs_sent", "rejected", "failed", "cancelled",
+      ]);
+      const RETRYABLE = new Set([
+        "blocked_code", "blocked_security", "blocked_tests", "blocked_stress", "blocked_secrets",
+        "blocked_policy", "blocked_injection", "blocked_agent_eval", "blocked_with_prs_sent",
+        "failed", "rejected",
+      ]);
+
+      async function api(path, opts = {}) {
+        const res = await fetch(API + path, { credentials: "include", ...opts });
+        let body = null;
+        try {
+          body = await res.json();
+        } catch {
+          body = null;
+        }
+        if (!res.ok) {
+          const d = body && body.detail;
+          let msg = `HTTP ${res.status}`;
+          if (typeof d === "string") msg = d;
+          else if (Array.isArray(d)) {
+            msg = d
+              .map((x) => `${(x.loc || []).filter((p) => p !== "body").join(".") || "request"}: ${x.msg}`)
+              .join("; ");
+          } else if (d) msg = JSON.stringify(d);
+          throw new Error(msg);
+        }
+        return body;
+      }
+
+      function setDot(dotId, state) {
+        const dot = document.getElementById(dotId);
+        dot.classList.remove("ok", "warn", "live", "off");
+        dot.classList.add(state);
+      }
+
+      class WebSocketManager {
+        constructor(onMessage) {
+          this.onMessage = onMessage;
+          this.ws = null;
+          this.pipelineId = null;
+          this.retries = 0;
+          this.timer = null;
+          this.finished = false;
+        }
+
+        follow(id) {
+          if (id === this.pipelineId && this.ws && this.ws.readyState <= 1) return;
+          this.close();
+          this.pipelineId = id;
+          this.retries = 0;
+          this.finished = false;
+          this.connect();
+        }
+
+        markFinished() {
+          // Terminal runs emit nothing more; stop reconnecting once the stream closes.
+          this.finished = true;
+        }
+
+        close() {
+          clearTimeout(this.timer);
+          if (this.ws) {
+            this.ws.onclose = null;
+            this.ws.close();
+          }
+          this.ws = null;
+          this._state("idle");
+        }
+
+        connect() {
+          if (!this.pipelineId) return;
+          this._state("connecting");
+          const ws = new WebSocket(`${WS_BASE}/ws/pipeline/${this.pipelineId}`);
+          this.ws = ws;
+          ws.onopen = () => {
+            this.retries = 0;
+            this._state("live");
+          };
+          ws.onmessage = (ev) => {
+            let msg;
+            try {
+              msg = JSON.parse(ev.data);
+            } catch {
+              return;
+            }
+            if (msg.kind !== "heartbeat") this.onMessage(msg);
+          };
+          ws.onclose = () => {
+            if (this.ws !== ws) return;
+            this._state("idle");
+            if (!this.finished && this.retries < 6) {
+              this.retries += 1;
+              const delay = Math.min(15000, 1000 * 2 ** (this.retries - 1));
+              this.timer = setTimeout(() => this.connect(), delay);
+            }
+          };
+        }
+
+        _state(state) {
+          const pill = document.getElementById("pill-ws");
+          pill.classList.toggle("ws-live", state === "live");
+          setDot("dot-ws", state === "live" ? "live" : state === "connecting" ? "warn" : "ok");
+          pill.title = state === "live" ? `Streaming run ${this.pipelineId}` : "Live pipeline stream";
+        }
+      }
+
+      function toast(text) {
+        const el = document.getElementById("connection-toast");
+        el.textContent = text;
+        el.style.display = "block";
+        clearTimeout(toast._t);
+        toast._t = setTimeout(() => {
+          el.style.display = "none";
+        }, 3000);
+      }
+
+      function clearAuthQueryParams() {
+        const u = new URL(location.href);
+        u.searchParams.delete("auth_error");
+        u.searchParams.delete("auth_success");
+        history.replaceState({}, "", u.pathname + u.search + u.hash);
+      }
+
+      function showAuthBanner(message, kind) {
+        const banner = document.getElementById("auth-banner");
+        banner.classList.remove("auth-error", "auth-success");
+        if (kind) banner.classList.add(kind);
+        banner.innerHTML = message;
+        banner.style.display = "block";
+      }
+
+      function closeUserMenu() {
+        const menu = document.getElementById("user-menu");
+        menu.classList.remove("open");
+        document.getElementById("user-menu-trigger").setAttribute("aria-expanded", "false");
+      }
+
+      function setupUserMenu() {
+        const menu = document.getElementById("user-menu");
+        const trigger = document.getElementById("user-menu-trigger");
+        trigger.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const open = menu.classList.toggle("open");
+          trigger.setAttribute("aria-expanded", String(open));
+        });
+        document.addEventListener("click", (e) => {
+          if (!menu.contains(e.target)) closeUserMenu();
+        });
+      }
+
+      function switchSettingsTab(tab) {
+        document.querySelectorAll(".settings-tab").forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.settingsTab === tab);
+        });
+        document.querySelectorAll(".settings-panel").forEach((panel) => {
+          panel.classList.toggle("active", panel.id === `settings-panel-${tab}`);
+        });
+      }
+
+      function openSettings(tab = "profile") {
+        switchSettingsTab(tab || "profile");
+        renderSettings();
+        openModal("modal-settings");
+        if (location.hash !== "#settings") history.replaceState(null, "", "#settings");
+      }
+
+      function switchOn(id, on) {
+        const el = document.getElementById(id);
+        el.classList.toggle("on", on);
+        el.setAttribute("aria-checked", String(on));
+      }
+
+      function switchValue(id) {
+        return document.getElementById(id).classList.contains("on");
+      }
+
+      function bindSwitch(id) {
+        const el = document.getElementById(id);
+        const toggle = () => {
+          el.classList.toggle("on");
+          el.setAttribute("aria-checked", String(el.classList.contains("on")));
+        };
+        el.addEventListener("click", toggle);
+        el.addEventListener("keydown", (e) => {
+          if (e.key === " " || e.key === "Enter") {
+            e.preventDefault();
+            toggle();
+          }
+        });
+      }
+
+      function loadLocalPrefs() {
+        try {
+          return JSON.parse(localStorage.getItem("orion.prefs") || "{}");
+        } catch {
+          return {};
+        }
+      }
+
+      function saveLocalPrefs(prefs) {
+        localStorage.setItem("orion.prefs", JSON.stringify(prefs));
+      }
+
+      function applyPreferences(prefs) {
+        if (!prefs) return;
+        const branch = prefs.default_branch || "main";
+        const url = prefs.default_repo_url || "";
+        const name = prefs.default_repo_name || "";
+        if (url) document.getElementById("clone-url").value = url;
+        if (name) document.getElementById("repo-input").value = name;
+        if (branch) document.getElementById("branch-input").value = branch;
+        localStorage.setItem(
+          "orion.lastRepo",
+          JSON.stringify({ clone_url: url, branch, repo_full_name: name })
+        );
+      }
+
+      function renderSettings() {
+        const p = state.profile;
+        const localPrefs = loadLocalPrefs();
+        const prefs = p?.preferences || {
+          default_branch: localPrefs.default_branch || "main",
+          default_repo_url: localPrefs.default_repo_url || "",
+          default_repo_name: localPrefs.default_repo_name || "",
+          auto_pr_enabled: localPrefs.auto_pr_enabled !== false,
+          notify_on_block: localPrefs.notify_on_block !== false,
+        };
+
+        document.getElementById("set-username").textContent = p?.user?.username
+          ? `@${p.user.username}`
+          : "Not signed in";
+        document.getElementById("set-name").textContent = p?.user?.name || "—";
+        document.getElementById("set-login-at").textContent = p?.user?.login_at
+          ? new Date(p.user.login_at).toLocaleString()
+          : "—";
+
+        const gh = p?.github || {};
+        const statusEl = document.getElementById("set-github-status");
+        if (!gh.oauth_configured) {
+          statusEl.className = "settings-status warn";
+          statusEl.textContent = "OAuth not configured on server (.env)";
+        } else if (gh.connected && gh.has_token) {
+          statusEl.className = "settings-status ok";
+          statusEl.textContent = `Connected as @${p?.user?.username || "user"}`;
+        } else {
+          statusEl.className = "settings-status warn";
+          statusEl.textContent = "Not connected — sign in to enable Auto-PR";
+        }
+        document.getElementById("set-oauth-callback").textContent = gh.oauth_callback_url || "—";
+        document.getElementById("set-oauth-scopes").textContent = gh.scopes || "—";
+        document.getElementById("set-oauth-client").textContent = gh.oauth_client_id || "—";
+        document.getElementById("set-github-login").style.display = gh.connected ? "none" : "inline-flex";
+        document.getElementById("set-github-reconnect").style.display = gh.connected ? "inline-flex" : "none";
+        document.getElementById("set-github-logout").style.display = gh.connected ? "inline-flex" : "none";
+
+        document.getElementById("set-default-repo-url").value = prefs.default_repo_url || "";
+        document.getElementById("set-default-repo-name").value = prefs.default_repo_name || "";
+        document.getElementById("set-default-branch").value = prefs.default_branch || "main";
+        switchOn("set-auto-pr", prefs.auto_pr_enabled !== false);
+        switchOn("set-notify-block", prefs.notify_on_block !== false);
+
+        document.getElementById("set-api-base").value = localStorage.getItem("orion.api") || API;
+        const plat = p?.platform || {};
+        document.getElementById("set-platform-env").textContent = plat.environment || "—";
+        document.getElementById("set-platform-deploy").textContent = plat.deploy_mode || "—";
+        const docs = document.getElementById("set-platform-docs");
+        docs.href = plat.docs_url || `${API}/docs`;
+
+        if (p?.user) {
+          document.getElementById("menu-display-name").textContent = p.user.name || p.user.username;
+          document.getElementById("menu-login-at").textContent = p.user.login_at
+            ? `Since ${new Date(p.user.login_at).toLocaleDateString()}`
+            : "Signed in via GitHub";
+        }
+        wireAuthLinks();
+      }
+
+      async function loadProfile() {
+        try {
+          state.profile = await api("/api/v1/auth/profile");
+        } catch {
+          state.profile = null;
+        }
+        renderSettings();
+        const prefs = state.profile?.preferences || loadLocalPrefs();
+        if (prefs && Object.keys(prefs).length) applyPreferences(prefs);
+      }
+
+      async function saveSettings() {
+        const pipelineMsg = document.getElementById("settings-pipeline-msg");
+        const consoleMsg = document.getElementById("settings-console-msg");
+        pipelineMsg.textContent = "";
+        pipelineMsg.style.color = "#1e5c3a";
+        consoleMsg.textContent = "";
+        consoleMsg.style.color = "#1e5c3a";
+
+        const prefs = {
+          default_repo_url: document.getElementById("set-default-repo-url").value.trim(),
+          default_repo_name: document.getElementById("set-default-repo-name").value.trim(),
+          default_branch: document.getElementById("set-default-branch").value.trim() || "main",
+          auto_pr_enabled: switchValue("set-auto-pr"),
+          notify_on_block: switchValue("set-notify-block"),
+        };
+        saveLocalPrefs(prefs);
+        applyPreferences(prefs);
+
+        const apiBase = document.getElementById("set-api-base").value.trim().replace(/\/+$/, "");
+        if (apiBase && apiBase !== API) {
+          localStorage.setItem("orion.api", apiBase);
+          consoleMsg.textContent = "Console API saved — reload the page to connect to the new host.";
+        } else if (apiBase === API) {
+          consoleMsg.textContent = "Console API unchanged.";
+        }
+
+        if (state.profile?.authenticated) {
+          try {
+            await api("/api/v1/auth/preferences", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(prefs),
+            });
+            pipelineMsg.textContent = "Pipeline preferences saved to your ORION profile.";
+            await loadProfile();
+          } catch (e) {
+            pipelineMsg.textContent = e.message;
+            pipelineMsg.style.color = "#a32d2d";
+          }
+        } else {
+          pipelineMsg.textContent = "Saved in this browser — sign in with GitHub to sync across sessions.";
+        }
+      }
+
+      async function checkAuthStatus() {
+        let data;
+        try {
+          data = await api("/api/v1/auth/status");
+        } catch {
+          return;
+        }
+        const loginBtn = document.getElementById("login-btn");
+        const userMenu = document.getElementById("user-menu");
+        const guestSettings = document.getElementById("settings-btn-guest");
+        const banner = document.getElementById("auth-banner");
+        const params = new URLSearchParams(location.search);
+        const authErr = params.get("auth_error");
+        const authOk = params.get("auth_success");
+
+        if (data.authenticated) {
+          loginBtn.style.display = "none";
+          userMenu.style.display = "block";
+          guestSettings.style.display = "none";
+          if (authOk) {
+            showAuthBanner(`Signed in as <strong>@${escapeHtml(data.username || "user")}</strong>.`, "auth-success");
+            setTimeout(() => {
+              banner.style.display = "none";
+              clearAuthQueryParams();
+            }, 4000);
+          } else if (!authErr) {
+            banner.style.display = "none";
+          }
+          document.getElementById("username").textContent = "@" + (data.username || "user");
+          const avatar = document.getElementById("avatar");
+          if (data.avatar) {
+            avatar.src = data.avatar;
+            avatar.alt = data.username || "avatar";
+          }
+        } else {
+          const oauth = data.oauth_configured !== false;
+          loginBtn.style.display = oauth ? "inline-flex" : "none";
+          userMenu.style.display = "none";
+          guestSettings.style.display = "inline-flex";
+          closeUserMenu();
+          if (authErr) {
+            const cb = data.oauth_callback_url
+              ? ` Register this callback on your GitHub OAuth app: <code class="mono">${escapeHtml(data.oauth_callback_url)}</code>`
+              : "";
+            showAuthBanner(
+              `${escapeHtml(authErr)}${cb} <a class="auth-link" data-path="/api/v1/auth/github" href="#">Try again</a>`,
+              "auth-error"
+            );
+            wireAuthLinks();
+            clearAuthQueryParams();
+          } else if (oauth) {
+            banner.classList.remove("auth-error", "auth-success");
+            banner.innerHTML =
+              'You are not logged in. Auto-PR features require GitHub authentication. <a class="auth-link" data-path="/api/v1/auth/github" href="#">Login</a> · <a href="#settings" onclick="openSettings(\'github\'); return false;">Settings</a>';
+            banner.style.display = "block";
+            wireAuthLinks();
+          } else {
+            banner.style.display = "none";
+          }
+        }
+        await loadProfile();
+      }
+
+      function openModal(id) {
+        const m = document.getElementById(id);
+        m.style.display = "flex";
+        document.body.style.overflow = "hidden";
+        if (id === "modal-intelligence") loadIntelligenceDashboard().catch((e) => {
+          document.getElementById("intel-dashboard-body").textContent = e.message;
+        });
+        if (id === "modal-incidents") loadIncidentsPanel().catch((e) => {
+          document.getElementById("incidents-body").textContent = e.message;
+        });
+      }
+
+      async function loadIncidentsPanel() {
+        const host = document.getElementById("incidents-body");
+        host.textContent = "Loading…";
+        const data = await api("/api/v1/incidents?limit=25");
+        const items = data.items || [];
+        if (!items.length) {
+          host.innerHTML = `<p class="hint">No incidents yet. MonitoringAgent opens P1/P2 incidents during post-deploy alerts.</p>`;
+          return;
+        }
+        host.innerHTML = `
+          <p class="hint">${items.length} recent incident(s) · API: /api/v1/incidents</p>
+          <table class="runs-table" style="width:100%;margin-top:12px">
+            <thead><tr><th>ID</th><th>Sev</th><th>Status</th><th>Repo</th><th>Actions</th></tr></thead>
+            <tbody>
+              ${items.map((i) => `
+                <tr>
+                  <td class="mono">${escapeHtml(i.incident_id)}</td>
+                  <td>${escapeHtml(i.severity)}</td>
+                  <td>${escapeHtml(i.status)}</td>
+                  <td>${escapeHtml(i.repo)}</td>
+                  <td>
+                    <button type="button" class="btn-secondary" data-inc="${escapeHtml(i.incident_id)}" data-act="mitigated">Mitigate</button>
+                    <button type="button" class="btn-secondary" data-inc="${escapeHtml(i.incident_id)}" data-act="resolved">Resolve</button>
+                  </td>
+                </tr>`).join("")}
+            </tbody>
+          </table>`;
+        host.querySelectorAll("button[data-inc]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const inc = btn.getAttribute("data-inc");
+            const status = btn.getAttribute("data-act");
+            btn.disabled = true;
+            try {
+              await api(`/api/v1/incidents/${encodeURIComponent(inc)}/transition`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status, note: "Updated from ORION console" }),
+              });
+              await loadIncidentsPanel();
+            } catch (e) {
+              alert(e.message || String(e));
+              btn.disabled = false;
+            }
+          });
+        });
+      }
+
+      async function loadIntelligenceDashboard() {
+        const host = document.getElementById("intel-dashboard-body");
+        host.textContent = "Loading…";
+        const dash = await api("/api/v1/intelligence/dashboard");
+        const fleet = await api("/api/v1/intelligence/fleet");
+        const agents = await api("/api/v1/intelligence/agents");
+        host.innerHTML = `
+          <div class="hint">Generated ${escapeHtml(dash.generated_at || "")}</div>
+          <p><strong>SLO</strong> success ${((dash.slo || {}).success_rate || 0) * 100}% · error budget ${(dash.error_budget || {}).error_budget_remaining_percent ?? "—"}%</p>
+          <p><strong>FinOps</strong> recent est. $${(dash.finops || {}).total_usd_estimate ?? 0} (${(dash.finops || {}).recent_runs ?? 0} runs)</p>
+          <p><strong>Compliance</strong> avg ${(dash.compliance || {}).avg_score_percent ?? "—"}%</p>
+          <p><strong>Fleet</strong> ${escapeHtml(fleet.summary || "")}</p>
+          <p><strong>Agents</strong> ${agents.total ?? 0} registered · LLM ${escapeHtml(dash.llm_mode || "")}</p>
+          <p class="hint">APIs: /intelligence/dashboard · /fleet · /audit-explorer · /agents · /rag?q=</p>
+        `;
+      }
+
+      function closeModal(id) {
+        const m = document.getElementById(id);
+        m.style.display = "none";
+        document.body.style.overflow = "";
+      }
+
+      function setupDropzone(dropzoneId, fileInputId, fileListId) {
+        const dz = document.getElementById(dropzoneId);
+        const fi = document.getElementById(fileInputId);
+        const list = document.getElementById(fileListId);
+        dz.addEventListener("click", () => fi.click());
+        dz.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          dz.classList.add("dragover");
+        });
+        dz.addEventListener("dragleave", () => dz.classList.remove("dragover"));
+        dz.addEventListener("drop", (e) => {
+          e.preventDefault();
+          dz.classList.remove("dragover");
+          fi.files = e.dataTransfer.files;
+          renderFileList(fi.files, fileListId);
+        });
+        fi.addEventListener("change", () => renderFileList(fi.files, fileListId));
+      }
+
+      function renderFileList(files, listId) {
+        const list = document.getElementById(listId);
+        list.innerHTML = "";
+        for (const f of files) {
+          const name = f.name.length > 40 ? f.name.slice(0, 37) + "…" : f.name;
+          const kb = f.size / 1024;
+          const size = kb > 1024 ? (kb / 1024).toFixed(2) + " MB" : kb.toFixed(1) + " KB";
+          let emoji = "📄";
+          if (f.name.toLowerCase().endsWith(".zip")) emoji = "🗜️";
+          if (/png|jpg|jpeg|webp/i.test(f.name)) emoji = "🖼️";
+          if (f.name.toLowerCase().endsWith(".csv")) emoji = "📊";
+          const div = document.createElement("div");
+          div.className = "file-item";
+          div.innerHTML = `<span>${emoji} <span class="mono">${name}</span></span><span class="mono">${size}</span>`;
+          list.appendChild(div);
+        }
+      }
+
+      function severityClass(sev) {
+        const s = (sev || "").toLowerCase();
+        if (s === "critical") return "severity-critical";
+        if (s === "high") return "severity-high";
+        if (s === "medium") return "severity-medium";
+        return "severity-low";
+      }
+
+      async function runGitAnalysis() {
+        const fi = document.getElementById("git-file-input");
+        const ta = document.getElementById("git-text-input");
+        const err = document.getElementById("git-inline-err");
+        err.classList.remove("on");
+        err.textContent = "";
+        if ((!fi.files || fi.files.length === 0) && !ta.value.trim()) {
+          err.textContent = "Add at least one file or paste logs.";
+          err.classList.add("on");
+          return;
+        }
+        const btn = document.getElementById("git-analyze-btn");
+        const old = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "Analyzing...";
+        const fd = new FormData();
+        for (const f of fi.files) fd.append("files", f);
+        fd.append("text_input", ta.value || "");
+        try {
+          const res = await fetch(`${API}/api/v1/multimodal/git-logs`, {
+            method: "POST",
+            credentials: "include",
+            body: fd,
+          });
+          if (res.status === 401) {
+            err.textContent = "Please login with GitHub first";
+            err.classList.add("on");
+            return;
+          }
+          const data = await res.json();
+          renderGitResults(data.result);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = old;
+        }
+      }
+
+      function renderGitResults(result) {
+        const box = document.getElementById("git-results");
+        box.style.display = "block";
+        const sev = result.severity || "low";
+        const issues = result.issues || [];
+        const actions = result.immediate_actions || [];
+        const cmdBlocks = [];
+        let html = "";
+        html += `<div style="display:flex;gap:10px;align-items:center;justify-content:space-between">`;
+        html += `<div class="${severityClass(sev)}" style="padding:6px 10px;border-radius:999px;font-size:12px">${sev}</div>`;
+        html += `<button class="btn-modal-trigger" type="button" id="git-export-btn">Export JSON</button>`;
+        html += `</div>`;
+        html += `<p style="color:var(--text-secondary);line-height:1.5">${escapeHtml(
+          result.summary || ""
+        )}</p>`;
+        if (actions.length) {
+          html += `<div style="margin-top:10px"><div class="panel-title">Immediate actions</div><ol style="margin:0;padding-left:18px;color:var(--text-secondary)">`;
+          actions.forEach((a) => (html += `<li style="margin:6px 0">${escapeHtml(String(a))}</li>`));
+          html += `</ol></div>`;
+        }
+        for (const iss of issues) {
+          html += `<div class="issue-card">`;
+          html += `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">`;
+          html += `<span class="mono" style="font-size:11px;color:var(--text-muted)">${escapeHtml(
+            String(iss.category || "issue")
+          )}</span>`;
+          html += `</div>`;
+          html += `<div style="font-weight:700;margin-top:6px">${escapeHtml(
+            String(iss.title || "")
+          )}</div>`;
+          html += `<div style="margin-top:6px;color:var(--text-secondary);font-size:13px">${escapeHtml(
+            String(iss.description || "")
+          )}</div>`;
+          html += `<div style="margin-top:8px;color:var(--text-muted);font-size:12px"><b>Root cause:</b> ${escapeHtml(
+            String(iss.root_cause || "")
+          )}</div>`;
+          const cmds = iss.fix_commands || [];
+          if (cmds.length) {
+            const block = cmds.map((c) => "$ " + String(c)).join("\n");
+            cmdBlocks.push(cmds.join("\n"));
+            const idx = cmdBlocks.length - 1;
+            html += `<div style="margin-top:10px;display:flex;gap:10px;align-items:flex-start">`;
+            html += `<pre class="code" style="flex:1"><code>${escapeHtml(block)}</code></pre>`;
+            html += `<button class="btn-modal-trigger git-copy-cmds" type="button" data-idx="${idx}">Copy</button>`;
+            html += `</div>`;
+          }
+          html += `</div>`;
+        }
+        const st = result.server_timeout_analysis || {};
+        if (st.detected) {
+          html += `<div class="issue-card"><div class="panel-title">Server timeouts</div><pre class="code"><code>${escapeHtml(
+            JSON.stringify(st, null, 2)
+          )}</code></pre></div>`;
+        }
+        const be = result.build_error_analysis || {};
+        if (be.detected) {
+          html += `<div class="issue-card"><div class="panel-title">Build errors</div>`;
+          if (be.exact_fix_command) {
+            html += `<pre class="code"><code>$ ${escapeHtml(String(be.exact_fix_command))}</code></pre>`;
+          }
+          html += `</div>`;
+        }
+        box.innerHTML = html;
+        const exp = document.getElementById("git-export-btn");
+        if (exp) exp.addEventListener("click", () => exportResults(result, "git-analysis.json"));
+        box.querySelectorAll(".git-copy-cmds").forEach((b) => {
+          b.addEventListener("click", () => {
+            const idx = Number(b.getAttribute("data-idx"));
+            const text = cmdBlocks[idx] || "";
+            navigator.clipboard.writeText(text);
+          });
+        });
+      }
+
+      async function runPaymentAnalysis() {
+        const fi = document.getElementById("pay-file-input");
+        const ta = document.getElementById("pay-text-input");
+        const err = document.getElementById("pay-inline-err");
+        err.classList.remove("on");
+        err.textContent = "";
+        if ((!fi.files || fi.files.length === 0) && !ta.value.trim()) {
+          err.textContent = "Add at least one file or paste data.";
+          err.classList.add("on");
+          return;
+        }
+        const btn = document.getElementById("pay-analyze-btn");
+        const old = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "Analyzing...";
+        const fd = new FormData();
+        for (const f of fi.files) fd.append("files", f);
+        fd.append("text_input", ta.value || "");
+        try {
+          const res = await fetch(`${API}/api/v1/multimodal/payment`, {
+            method: "POST",
+            credentials: "include",
+            body: fd,
+          });
+          if (res.status === 401) {
+            err.textContent = "Please login with GitHub first";
+            err.classList.add("on");
+            return;
+          }
+          const data = await res.json();
+          renderPaymentResults(data.result);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = old;
+        }
+      }
+
+      function renderPaymentResults(result) {
+        const box = document.getElementById("payment-results");
+        box.style.display = "block";
+        const sev = result.severity || "low";
+        const rate = result.success_rate_percent;
+        const rec = result.reconciliation_summary || {};
+        let html = "";
+        html += `<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap">`;
+        html += `<div class="${severityClass(sev)}" style="padding:6px 10px;border-radius:999px;font-size:12px">${sev}</div>`;
+        html += `<div style="font-size:34px;font-family:var(--font-mono);font-weight:800">${Number(
+          rate || 0
+        ).toFixed(2)}%</div>`;
+        html += `<button class="btn-modal-trigger" type="button" id="pay-export-btn">Export JSON</button>`;
+        html += `</div>`;
+        const rs = rec.reconciliation_status || "unable_to_determine";
+        const rsClass =
+          rs === "balanced" ? "severity-low" : rs === "discrepancy_found" ? "severity-critical" : "severity-medium";
+        html += `<div style="margin-top:10px;padding:8px 10px;border-radius:10px" class="${rsClass}">Reconciliation: <b>${escapeHtml(
+          String(rs)
+        )}</b></div>`;
+        html += `<p style="color:var(--text-secondary);line-height:1.5">${escapeHtml(
+          result.summary || ""
+        )}</p>`;
+        box.innerHTML = html;
+        const exp2 = document.getElementById("pay-export-btn");
+        if (exp2) exp2.addEventListener("click", () => exportResults(result, "payment-analysis.json"));
+      }
+
+      function exportResults(data, filename) {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      async function runMultimodalAgent(agentType, textId, fileId, errId, resultsId) {
+        const text = document.getElementById(textId).value || "";
+        const fi = document.getElementById(fileId);
+        const err = document.getElementById(errId);
+        const out = document.getElementById(resultsId);
+        err.classList.remove("on");
+        err.textContent = "";
+        if ((!fi.files || fi.files.length === 0) && !text.trim()) {
+          err.textContent = "Add at least one file or paste text.";
+          err.classList.add("on");
+          return;
+        }
+        const fd = new FormData();
+        fd.append("agent_type", agentType);
+        if (text.trim()) {
+          if (agentType === "log_analysis" || agentType === "production_triage") {
+            try {
+              const pre = await api("/api/v1/tools/text-analyze", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text, operations: ["classify_log"] }),
+              });
+              if (pre && pre.log_type) fd.append("log_type", pre.log_type);
+            } catch {
+              /* default log type */
+            }
+          }
+          fd.append("text_input", text);
+        }
+        for (const f of fi.files || []) fd.append("files", f);
+        try {
+          const data = await api("/api/v1/multimodal/analyze", { method: "POST", body: fd });
+          out.style.display = "block";
+          out.textContent = JSON.stringify(data.result || data, null, 2);
+        } catch (e) {
+          err.textContent = e.message;
+          err.classList.add("on");
+        }
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function countUp(element, target, duration = 800) {
+        const start = performance.now();
+        const from = Number(element.textContent) || 0;
+        const to = Number(target);
+        function easeOutQuart(t) {
+          return 1 - Math.pow(1 - t, 4);
+        }
+        function frame(now) {
+          const t = Math.min(1, (now - start) / duration);
+          const v = from + (to - from) * easeOutQuart(t);
+          element.textContent = String(Math.round(v));
+          if (t < 1) requestAnimationFrame(frame);
+        }
+        requestAnimationFrame(frame);
+      }
+
+      // status = run status while the stage is active; art = artifact proving it finished;
+      // block = terminal status meaning this stage stopped the run.
+      const STAGES = [
+        { name: "Ingest repository", status: ["ingesting"], art: "metadata", block: ["blocked_injection"] },
+        { name: "Code analysis", status: ["analyzing_code"], art: "code_analysis", block: ["blocked_code"], scan: true },
+        { name: "Security scan", status: ["analyzing_security"], art: "security_scan", block: ["blocked_security", "blocked_secrets"], scan: true },
+        { name: "QA tests", status: ["running_qa"], art: "qa_report", block: ["blocked_tests"], scan: true },
+        { name: "Stress test", status: ["running_stress"], art: "stress_report", block: ["blocked_stress"] },
+        { name: "Risk & supply chain", status: [], art: "change_risk_report" },
+        { name: "Enterprise & AI gates", status: [], art: "policy_evaluation", block: ["blocked_policy", "blocked_agent_eval"] },
+        { name: "Approval gate", status: ["awaiting_approval"], art: "approval", block: ["rejected"] },
+        { name: "Deploy", status: ["deploying"], art: "deployment_info", block: ["rolled_back"] },
+        { name: "Monitoring window", status: ["monitoring"], art: "monitoring_summary", block: ["auto_rolled_back"] },
+        { name: "Released", status: [], art: null },
+      ];
+      const SCAN_STATUSES = new Set(["analyzing_code", "analyzing_security", "running_qa"]);
+
+      const state = {
+        runId: null,
+        run: null,
+        artifacts: [],
+        runs: [],
+        refreshTimer: null,
+        lastEventAt: 0,
+        lastLoggedStatus: null,
+        profile: null,
+        logKeys: new Set(),
+        lastTerminalRun: null,
+        diagnostics: null,
+      };
+      const wsManager = new WebSocketManager(onStreamMessage);
+
+      function buildStages() {
+        const root = document.getElementById("stage-timeline");
+        root.innerHTML = "";
+        STAGES.forEach((s, idx) => {
+          const row = document.createElement("div");
+          row.className = "stage";
+          row.id = `stage-${idx}`;
+          row.innerHTML = `
+            <div class="rail"><div class="rail-fill"></div></div>
+            <div class="node" id="node-${idx}"> </div>
+            <div style="font-size:13px;color:var(--text-secondary)">${escapeHtml(s.name)}</div>
+            <div class="chip" id="chip-${idx}">pending</div>
+          `;
+          root.appendChild(row);
+        });
+      }
+
+      function stageStates(run, artifacts) {
+        const byType = {};
+        for (const a of artifacts) byType[a.artifact_type] = a;
+        const status = run ? run.status : null;
+        const deploySkipped = !!(byType.deployment_info && byType.deployment_info.content && byType.deployment_info.content.skipped);
+        const deploySimulated = !!(byType.deployment_info && byType.deployment_info.content && byType.deployment_info.content.simulated);
+        const states = STAGES.map((s) => {
+          if (!run || status === "queued") return { state: "pending" };
+          if (s.block && s.block.includes(status)) return { state: "failed", label: status.replace(/_/g, " ") };
+          if (s.art && byType[s.art]) return { state: "done" };
+          if (s.status.includes(status) || (s.scan && SCAN_STATUSES.has(status))) return { state: "running" };
+          return { state: "pending" };
+        });
+        if (byType.metadata) {
+          states[0] = states[0].state === "failed" ? states[0] : { state: "done" };
+        } else if (
+          status === "failed" &&
+          run &&
+          run.error_message &&
+          /ingest/i.test(run.error_message)
+        ) {
+          states[0] = { state: "failed", label: "ingest failed" };
+        }
+        const deployIdx = STAGES.length - 3;
+        const monitorIdx = STAGES.length - 2;
+        const releaseIdx = STAGES.length - 1;
+        if (deploySkipped || status === "approved") {
+          states[deployIdx] = { state: "skipped", label: "skipped (no Docker)" };
+          states[monitorIdx] = { state: "skipped", label: "skipped" };
+          states[releaseIdx] = { state: "skipped", label: "approved, not deployed" };
+        }
+        if (deploySimulated || (status === "deployed" && byType.deployment_info?.content?.simulated)) {
+          states[deployIdx] = { state: "done", label: "simulated deploy" };
+          states[monitorIdx] = byType.monitoring_summary ? { state: "done", label: "simulated" } : { state: "running", label: "monitoring" };
+          states[releaseIdx] = byType.monitoring_summary ? { state: "done", label: "released" } : states[releaseIdx];
+        }
+        if (status === "deployed" && !deploySimulated) {
+          states[deployIdx] = { state: "done" };
+          states[monitorIdx] = byType.monitoring_summary ? { state: "done" } : states[monitorIdx].state === "pending" ? { state: "skipped" } : states[monitorIdx];
+          states[releaseIdx] = { state: "done" };
+        }
+        if (status === "failed" || status === "cancelled" || status === "blocked_with_prs_sent") {
+          const ingestFailed =
+            states[0].state === "failed" &&
+            run &&
+            run.error_message &&
+            /ingest/i.test(run.error_message);
+          if (!ingestFailed) {
+            const idx = states.findIndex((s) => s.state === "running" || s.state === "pending");
+            if (idx >= 0) states[idx] = { state: "failed", label: status.replace(/_/g, " ") };
+            states.forEach((s, i) => {
+              if (i > idx && s.state === "running") states[i] = { state: "pending" };
+            });
+          }
+        }
+        return states;
+      }
+
+      function renderTimeline() {
+        const states = stageStates(state.run, state.artifacts);
+        let complete = 0;
+        states.forEach((s, idx) => {
+          const node = document.getElementById(`node-${idx}`);
+          const chip = document.getElementById(`chip-${idx}`);
+          const row = document.getElementById(`stage-${idx}`);
+          node.className = "node";
+          chip.className = "chip";
+          row.classList.toggle("done", s.state === "done" || s.state === "skipped");
+          const map = {
+            done: ["pass", "✓", "done"],
+            running: ["running", "", "running"],
+            failed: ["fail", "✕", "failed"],
+            skipped: ["skipped", "–", "skipped"],
+            pending: ["", "", "pending"],
+          }[s.state];
+          if (map[0]) node.classList.add(map[0]);
+          node.textContent = map[1];
+          chip.classList.add(s.state);
+          chip.textContent = s.label || map[2];
+          if (s.state === "done" || s.state === "skipped") complete += 1;
+        });
+        const run = state.run;
+        const pct = !run ? 0 : run.status === "deployed" || run.status === "approved" ? 100 : Math.round((complete / STAGES.length) * 100);
+        document.getElementById("run-progress-fill").style.width = pct + "%";
+      }
+
+      function parseTs(value) {
+        if (!value) return null;
+        const iso = /[zZ]|[+-]\d\d:?\d\d$/.test(value) ? value : value + "Z";
+        const d = new Date(iso);
+        return isNaN(d) ? null : d;
+      }
+
+      function fmtDuration(ms) {
+        if (ms == null || ms < 0) return "–";
+        const s = Math.round(ms / 1000);
+        if (s < 60) return s + "s";
+        const m = Math.floor(s / 60);
+        return m < 60 ? `${m}m ${s % 60}s` : `${Math.floor(m / 60)}h ${m % 60}m`;
+      }
+
+      function fmtAgo(d) {
+        if (!d) return "–";
+        const s = Math.round((Date.now() - d.getTime()) / 1000);
+        if (s < 60) return s + "s ago";
+        if (s < 3600) return Math.floor(s / 60) + "m ago";
+        if (s < 86400) return Math.floor(s / 3600) + "h ago";
+        return d.toLocaleDateString();
+      }
+
+      function statusClass(status) {
+        if (status === "deployed" || status === "approved") return "ok";
+        if (status === "cancelled" || status === "queued") return "muted";
+        if (status && (status.startsWith("blocked") || status === "rejected")) return "blocked";
+        if (status === "failed" || (status && status.includes("rolled_back"))) return "bad";
+        return "running";
+      }
+
+      function statusPill(status) {
+        return `<span class="status-pill ${statusClass(status)}">${escapeHtml(status || "unknown")}</span>`;
+      }
+
+      async function loadRuns() {
+        try {
+          const data = await api("/api/v1/pipeline/runs?limit=25");
+          state.runs = data.items || [];
+          renderRuns();
+        } catch (e) {
+          document.getElementById("runs-body").innerHTML =
+            `<tr><td colspan="6" class="muted-cell">Could not load runs: ${escapeHtml(e.message)}</td></tr>`;
+        }
+      }
+
+      function renderRuns() {
+        const body = document.getElementById("runs-body");
+        if (!state.runs.length) {
+          body.innerHTML = `<tr><td colspan="6" class="muted-cell">No runs yet. Start one with “Run Pipeline”.</td></tr>`;
+          return;
+        }
+        body.innerHTML = state.runs
+          .map((r) => {
+            const created = parseTs(r.created_at);
+            const end = parseTs(r.completed_at) || (TERMINAL.has(r.status) ? parseTs(r.updated_at) : new Date());
+            const dur = created && end ? end - created : null;
+            return `<tr data-id="${escapeHtml(r.id)}" class="${r.id === state.runId ? "selected" : ""}">
+              <td>${statusPill(r.status)}</td>
+              <td class="mono">${escapeHtml(r.repo_full_name)}</td>
+              <td class="mono">${escapeHtml(r.branch)}</td>
+              <td class="mono">${escapeHtml(r.short_commit_id || (r.commit_id || "").slice(0, 8))}</td>
+              <td title="${created ? escapeHtml(created.toLocaleString()) : ""}">${fmtAgo(created)}</td>
+              <td>${fmtDuration(dur)}</td>
+            </tr>`;
+          })
+          .join("");
+      }
+
+      async function selectRun(id, { resetLog = true } = {}) {
+        id = (id || "").trim();
+        if (!id) return;
+        if (!/^[0-9a-f-]{36}$/i.test(id)) {
+          toast("Pipeline ID must be a UUID");
+          return;
+        }
+        const changed = id !== state.runId;
+        state.runId = id;
+        document.getElementById("pipeline-id").value = id;
+        const url = new URL(location.href);
+        url.searchParams.set("run", id);
+        history.replaceState(null, "", url);
+        if (changed && resetLog) {
+          state.artifacts = [];
+          state.lastLoggedStatus = null;
+          state.logKeys = new Set();
+          state.lastTerminalRun = null;
+        }
+        renderRuns();
+        await refreshSelected();
+        wsManager.follow(id);
+        if (state.run && TERMINAL.has(state.run.status)) wsManager.markFinished();
+      }
+
+      async function refreshSelected() {
+        if (!state.runId) return;
+        try {
+          const [run, arts] = await Promise.all([
+            api(`/api/v1/pipeline/runs/${state.runId}`),
+            api(`/api/v1/pipeline/runs/${state.runId}/artifacts`),
+          ]);
+          state.run = run;
+          state.artifacts = arts.items || [];
+          state.diagnostics = null;
+          if (TERMINAL.has(run.status) || String(run.status || "").startsWith("blocked")) {
+            try {
+              state.diagnostics = await api(`/api/v1/pipeline/runs/${state.runId}/diagnostics`);
+            } catch {
+              state.diagnostics = null;
+            }
+          }
+        } catch (e) {
+          state.run = null;
+          state.artifacts = [];
+          state.diagnostics = null;
+          document.getElementById("run-meta").innerHTML = `<span class="err">${escapeHtml(e.message)}</span>`;
+          renderTimeline();
+          renderArtifacts();
+          rebuildTerminalLogs();
+          updateControls();
+          return;
+        }
+        renderRunMeta();
+        renderTimeline();
+        renderArtifacts();
+        renderMonitoringForRun();
+        updateControls();
+        const runTerminal = TERMINAL.has(state.run.status);
+        if (state.lastTerminalRun !== state.runId || runTerminal) {
+          rebuildTerminalLogs();
+          state.lastTerminalRun = state.runId;
+        } else {
+          mergeTerminalLogs();
+        }
+        const idx = state.runs.findIndex((r) => r.id === state.run.id);
+        if (idx >= 0 && state.runs[idx].status !== state.run.status) {
+          state.runs[idx] = state.run;
+          renderRuns();
+        }
+        if (runTerminal) wsManager.markFinished();
+      }
+
+      function scheduleRefresh() {
+        clearTimeout(state.refreshTimer);
+        state.refreshTimer = setTimeout(() => {
+          refreshSelected();
+          loadRuns();
+        }, 350);
+      }
+
+      function renderDiagnosticsPanel(diag) {
+        if (!diag || !diag.remediation_steps || !diag.remediation_steps.length) return "";
+        const evidence = (diag.evidence || [])
+          .slice(0, 4)
+          .map((ev) => {
+            if (ev.kind === "injection_finding") {
+              return `${ev.rule_id} (${ev.severity}) @ ${ev.source || "content"}:${ev.line || "?"} — ${ev.snippet || ""}`;
+            }
+            if (ev.kind === "secret_finding") {
+              return `${ev.type} in ${ev.file}:${ev.line_hint || "?"}`;
+            }
+            if (ev.summary) return String(ev.summary);
+            return JSON.stringify(ev);
+          })
+          .filter(Boolean);
+        const steps = diag.remediation_steps
+          .map((s) => `<li>${escapeHtml(s)}</li>`)
+          .join("");
+        const evHtml = evidence.length
+          ? `<div class="evidence">${evidence.map((line) => escapeHtml(line)).join("<br>")}</div>`
+          : "";
+        const artifacts = (diag.artifacts_to_review || []).join(", ");
+        return `<div class="run-diagnostics">
+          <h4>How to resolve · ${escapeHtml(diag.headline || diag.status || "")}</h4>
+          ${evHtml}
+          <ol>${steps}</ol>
+          ${artifacts ? `<div class="muted-label" style="margin-top:8px">Review artifacts: ${escapeHtml(artifacts)}</div>` : ""}
+        </div>`;
+      }
+
+      function renderRunMeta() {
+        const r = state.run;
+        const created = parseTs(r.created_at);
+        let html = `${statusPill(r.status)} <span class="mono">${escapeHtml(r.repo_full_name)}</span>
+          @ <span class="mono">${escapeHtml(r.branch)}</span> · <span class="mono">${escapeHtml(r.short_commit_id)}</span>
+          · by ${escapeHtml(r.pusher)} · ${fmtAgo(created)}`;
+        if (r.has_warnings) html += ` · <span title="Non-blocking findings were recorded">⚠ warnings</span>`;
+        if (r.error_message) html += `<div class="err">${escapeHtml(r.error_message)}</div>`;
+        html += renderDiagnosticsPanel(state.diagnostics);
+        document.getElementById("run-meta").innerHTML = html;
+      }
+
+      function updateControls() {
+        const s = state.run && state.run.status;
+        document.getElementById("retry-btn").disabled = !s || !RETRYABLE.has(s);
+        document.getElementById("cancel-btn").disabled = !s || TERMINAL.has(s);
+      }
+
+      function terminalScrollEl() {
+        return document.getElementById("agent-terminal");
+      }
+
+      function scrollTerminal(force) {
+        const el = terminalScrollEl();
+        if (!el) return;
+        if (force || el.dataset.stick === "1") {
+          el.scrollTop = el.scrollHeight;
+        }
+      }
+
+      function logMessageKey(msg) {
+        return [
+          msg.kind || "event",
+          msg.ts || "",
+          msg.artifact_type || "",
+          msg.agent || "",
+          msg.status || msg.stage || "",
+          msg.summary || msg.text || "",
+          msg.id || "",
+        ].join("|");
+      }
+
+      function levelFromVerdict(verdict) {
+        const v = String(verdict || "").toLowerCase();
+        if (["critical", "fail", "failed", "rejected", "high", "blocked"].includes(v)) return "err";
+        if (["warn", "warning", "medium", "simulated", "skipped"].includes(v)) return "warn";
+        return "info";
+      }
+
+      function formatLogEntry(msg) {
+        const d = parseTs(msg.ts) || new Date();
+        const ts = d.toLocaleTimeString([], { hour12: false });
+        const kind = msg.kind || "event";
+        let level = msg.level || "info";
+        let text = msg.text || "";
+        if (!text) {
+          if (kind === "snapshot") {
+            text = `WebSocket connected · run status ${msg.status || "unknown"}`;
+          } else if (kind === "audit") {
+            text = `${msg.action || "event"} by ${msg.actor || "system"} → ${msg.outcome || "ok"}`;
+          } else if (kind === "artifact") {
+            const label = msg.artifact_type || msg.agent || "artifact";
+            const extra = msg.summary ? `: ${msg.summary}` : "";
+            const dur = msg.duration_seconds ? ` · ${Number(msg.duration_seconds).toFixed(1)}s` : "";
+            const mode = msg.analysis_mode ? ` · ${msg.analysis_mode}` : "";
+            text = `${label}${extra}${dur}${mode}`;
+            if (msg.verdict) level = levelFromVerdict(msg.verdict);
+          } else if (kind === "agent-complete") {
+            text = `Agent finished · ${String(msg.stage || "").replace(/_/g, " ")}`;
+          } else if (kind === "stage-update" || kind === "event") {
+            const st = msg.status || msg.stage || "";
+            text = `Stage → ${String(st).replace(/_/g, " ")}`;
+            if (/blocked|rejected|rolled_back/.test(st)) level = "warn";
+            if (st === "failed") level = "err";
+          } else {
+            text = JSON.stringify(msg);
+          }
+        }
+        if (/skipped|unreachable/i.test(text) && level === "info") level = "warn";
+        const dim = kind === "audit" ? " dim" : "";
+        return `<div class="log-line${dim}"><span class="ts">${escapeHtml(ts)}</span><span class="badge ${level}">${level.toUpperCase()}</span>${escapeHtml(text)}</div>`;
+      }
+
+      function appendLogEntry(msg, { force = false } = {}) {
+        const key = logMessageKey(msg);
+        if (!force && state.logKeys.has(key)) return false;
+        state.logKeys.add(key);
+        const tb = document.getElementById("term-body");
+        const empty = tb.querySelector(".term-empty");
+        if (empty) empty.remove();
+        const el = terminalScrollEl();
+        const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 28;
+        if (atBottom) el.dataset.stick = "1";
+        tb.insertAdjacentHTML("beforeend", formatLogEntry(msg));
+        scrollTerminal();
+        return true;
+      }
+
+      function gateStats(artifacts) {
+        let pass = 0;
+        let warn = 0;
+        let fail = 0;
+        for (const type of ["code_analysis", "security_scan", "qa_report", "stress_report", "approval"]) {
+          const art = artifacts.find((a) => a.artifact_type === type);
+          if (!art) continue;
+          const { verdict } = artifactSummary(art);
+          const lvl = levelFromVerdict(verdict);
+          if (lvl === "err") fail += 1;
+          else if (lvl === "warn") warn += 1;
+          else pass += 1;
+        }
+        return { pass, warn, fail };
+      }
+
+      function buildTermStatsHtml(run, artifacts) {
+        const created = parseTs(run.created_at);
+        const end = parseTs(run.completed_at) || parseTs(run.updated_at);
+        const dur = created && end ? fmtDuration(end - created) : "—";
+        const gates = gateStats(artifacts);
+        const states = stageStates(run, artifacts);
+        const stagesDone = states.filter((s) => s.state === "done" || s.state === "skipped").length;
+        const statusClass =
+          run.status === "deployed" || run.status === "approved"
+            ? "ok"
+            : /fail|block|reject|cancel/.test(run.status)
+              ? "err"
+              : "warn";
+        return `<div class="term-stats" id="term-stats">
+          <div class="term-stats-head">Run statistics · ${escapeHtml(run.repo_full_name || "")}</div>
+          <div class="term-stat-grid">
+            <div class="term-stat"><div class="k">Status</div><div class="v ${statusClass}">${escapeHtml(run.status)}</div></div>
+            <div class="term-stat"><div class="k">Duration</div><div class="v">${escapeHtml(dur)}</div></div>
+            <div class="term-stat"><div class="k">Artifacts</div><div class="v">${artifacts.length}</div></div>
+            <div class="term-stat"><div class="k">Stages</div><div class="v">${stagesDone}/${STAGES.length}</div></div>
+            <div class="term-stat"><div class="k">Gates passed</div><div class="v ok">${gates.pass}</div></div>
+            <div class="term-stat"><div class="k">Warnings / fails</div><div class="v ${gates.warn + gates.fail ? "warn" : ""}">${gates.warn} / ${gates.fail}</div></div>
+          </div>
+        </div>`;
+      }
+
+      function updateTermStats() {
+        const run = state.run;
+        if (!run) return;
+        const el = document.getElementById("term-stats");
+        if (el) el.outerHTML = buildTermStatsHtml(run, state.artifacts);
+      }
+
+      function rebuildTerminalLogs() {
+        const run = state.run;
+        const artifacts = state.artifacts || [];
+        const tb = document.getElementById("term-body");
+        state.logKeys = new Set();
+
+        if (!run) {
+          tb.innerHTML =
+            '<div class="term-empty">Select a pipeline run to view live agent logs, gate results, and real-time statistics.</div>';
+          return;
+        }
+
+        const parts = [buildTermStatsHtml(run, artifacts)];
+        parts.push('<div class="log-divider">Event stream</div>');
+
+        const auditArt = artifacts.filter((a) => a.artifact_type === "audit_trail").pop();
+        const auditEvents = (auditArt && auditArt.content && auditArt.content.events) || [];
+        for (const ev of auditEvents) {
+          const entry = {
+            kind: "audit",
+            ts: ev.ts,
+            action: ev.action,
+            actor: ev.actor,
+            outcome: ev.outcome,
+          };
+          state.logKeys.add(logMessageKey(entry));
+          parts.push(formatLogEntry(entry));
+        }
+
+        const meta = artifacts.find((a) => a.artifact_type === "metadata");
+        if (meta) {
+          const msg = meta.content && meta.content.commit_message ? meta.content.commit_message.split("\n")[0] : "";
+          const files = ((meta.content && meta.content.changed_files) || []).length;
+          const entry = {
+            kind: "event",
+            ts: meta.created_at,
+            text: `Ingested ${files} file(s) · “${msg}”`,
+            level: "info",
+          };
+          state.logKeys.add(logMessageKey(entry));
+          parts.push(formatLogEntry(entry));
+        }
+
+        const sorted = artifacts
+          .filter((a) => !["audit_trail", "metadata", "diff"].includes(a.artifact_type))
+          .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+
+        for (const a of sorted) {
+          const { verdict, summary } = artifactSummary(a);
+          const entry = {
+            kind: "artifact",
+            id: a.id,
+            ts: a.created_at,
+            artifact_type: a.artifact_type,
+            summary: summary || "",
+            verdict,
+            duration_seconds: a.duration_seconds,
+            analysis_mode: a.content && a.content.analysis_mode,
+          };
+          state.logKeys.add(logMessageKey(entry));
+          parts.push(formatLogEntry(entry));
+        }
+
+        if (run.error_message) {
+          const entry = { kind: "event", ts: run.completed_at || run.updated_at, text: run.error_message, level: "err" };
+          state.logKeys.add(logMessageKey(entry));
+          parts.push(formatLogEntry(entry));
+        }
+
+        const finLevel =
+          run.status === "deployed" || run.status === "approved"
+            ? "info"
+            : /fail|block|reject|cancel/.test(run.status)
+              ? "err"
+              : "warn";
+        const entry = {
+          kind: "event",
+          ts: run.completed_at || run.updated_at || new Date().toISOString(),
+          text: `Pipeline ${TERMINAL.has(run.status) ? "finished" : "active"} · ${run.status}`,
+          level: finLevel,
+        };
+        state.logKeys.add(logMessageKey(entry));
+        parts.push(formatLogEntry(entry));
+
+        tb.innerHTML = parts.join("");
+        terminalScrollEl().dataset.stick = "1";
+        scrollTerminal(true);
+      }
+
+      function mergeTerminalLogs() {
+        const artifacts = state.artifacts || [];
+        const known = state.logKeys;
+        const sorted = artifacts
+          .filter((a) => !["audit_trail", "metadata", "diff"].includes(a.artifact_type))
+          .sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+        let added = false;
+        for (const a of sorted) {
+          const key = logMessageKey({ kind: "artifact", id: a.id, ts: a.created_at, artifact_type: a.artifact_type });
+          if (known.has(key)) continue;
+          const { verdict, summary } = artifactSummary(a);
+          appendLogEntry({
+            kind: "artifact",
+            id: a.id,
+            ts: a.created_at,
+            artifact_type: a.artifact_type,
+            summary: summary || "",
+            verdict,
+            duration_seconds: a.duration_seconds,
+            analysis_mode: a.content && a.content.analysis_mode,
+          });
+          added = true;
+        }
+        if (added) updateTermStats();
+      }
+
+      function onStreamMessage(msg) {
+        if (msg.run_id && state.runId && msg.run_id !== state.runId) return;
+        if (msg.kind === "heartbeat") return;
+        if (msg.kind === "stage-update") {
+          if (msg.status && msg.status === state.lastLoggedStatus) return;
+          state.lastLoggedStatus = msg.status;
+        }
+        appendLogEntry(msg);
+        if (msg.kind === "stage-update" && TERMINAL.has(msg.status)) {
+          toast(`Run finished: ${msg.status}`);
+          wsManager.markFinished();
+        }
+        if (msg.kind === "artifact") updateTermStats();
+        scheduleRefresh();
+      }
+
+      function coerceText(value) {
+        if (value == null) return "";
+        if (typeof value === "string") return value;
+        if (typeof value === "number" || typeof value === "boolean") return String(value);
+        if (typeof value === "object") {
+          if ("component_count" in value) {
+            const sources = Array.isArray(value.sources) ? value.sources.join(", ") : "manifests";
+            return `CycloneDX SBOM: ${value.component_count} component(s) from ${sources}.`;
+          }
+          try {
+            return JSON.stringify(value);
+          } catch {
+            return String(value);
+          }
+        }
+        return String(value);
+      }
+
+      function artifactSummary(a) {
+        const c = a.content || {};
+        const type = a.artifact_type || "";
+        let verdict =
+          a.verdict ||
+          c.severity ||
+          c.verdict ||
+          c.performance_verdict ||
+          c.decision ||
+          c.highest_severity ||
+          c.final_status ||
+          c.risk_level;
+        let summary = coerceText(a.summary || c.summary || c.reason || c.reasoning || c.root_cause || "");
+
+        if (!summary && type === "metadata") {
+          const files = (c.changed_files || []).length;
+          summary = `“${String(c.commit_message || "").split("\n")[0]}” · ${files} changed file(s)`;
+        }
+        if (!summary && type === "diff") {
+          const d = String(c.diff || "");
+          const adds = (d.match(/^\+(?!\+\+)/gm) || []).length;
+          const dels = (d.match(/^-(?!--)/gm) || []).length;
+          summary = `+${adds} / −${dels} lines${c.truncated ? " (truncated)" : ""}`;
+        }
+        if (!summary && type === "full_scan_combined") {
+          const parts = [];
+          const code = c.code_issues || c.code;
+          const sec = c.security_issues || c.security;
+          const qa = c.qa_issues || c.qa;
+          if (code) parts.push(`code: ${code.severity || "?"}`);
+          if (sec) parts.push(`security: ${sec.highest_severity || "?"}`);
+          if (qa) parts.push(`qa: ${qa.verdict || "?"}`);
+          summary = parts.join(" · ");
+        }
+        if (!summary && type === "service_graph") {
+          const nodes = c.node_count ?? Object.keys(c.nodes || {}).length;
+          const edges = c.edge_count ?? (c.edges || []).length;
+          const changed = (c.changed_services || []).slice(0, 4).join(", ");
+          summary = `${nodes} service(s), ${edges} link(s) from ${c.root_service || "app"}${changed ? `; touched ${changed}` : ""}.`;
+        }
+        if (!summary && type === "sbom") {
+          const stats = c.stats || (typeof c.summary === "object" ? c.summary : {});
+          const count = stats.component_count ?? (c.components || []).length;
+          const sources = (stats.sources || []).join(", ") || "dependency manifests";
+          summary = `CycloneDX SBOM: ${count} component(s) from ${sources}.`;
+        }
+        if (!summary && type === "change_risk_report") {
+          summary = `Change risk ${c.final_risk ?? "—"}/100 (${c.risk_level || "unknown"}).`;
+          verdict = verdict || c.risk_level;
+        }
+        if (!summary && type === "release_passport") {
+          const status = c.all_checks_passed ? "PASS" : "WARN";
+          const risk = c.risk || {};
+          summary = `Release passport ${status}: ${c.evidence_artifact_count ?? 0} evidence artifact(s), risk ${risk.final_score ?? "—"}/100 (${risk.level || "unknown"}).`;
+          verdict = verdict || status.toLowerCase();
+        }
+        if (!summary && type === "audit_trail") {
+          const events = c.events || [];
+          if (!events.length) summary = "No audit events recorded.";
+          else {
+            const last = events[events.length - 1];
+            summary = `${events.length} event(s); latest: ${last.action || "action"} by ${last.actor || "system"} (${last.outcome || "ok"}).`;
+            verdict = verdict || last.outcome;
+          }
+        }
+        if (!summary && type === "test_intelligence") {
+          summary = c.reason || `Test mode: ${c.mode || "full_suite"}.`;
+        }
+        if (!summary && type === "policy_evaluation") summary = c.summary || (c.passed ? "Policy passed" : "Policy blocked");
+        if (!summary && type === "compliance_report") summary = c.summary || `Compliance ${c.overall_score_percent ?? "—"}%`;
+        if (!summary && type === "agent_eval_report") summary = c.summary || `AgentEval ${c.aggregate_score ?? "—"}`;
+        if (!summary && type === "decision_ledger") summary = c.summary || `${c.decision_count ?? 0} decisions`;
+        if (!summary && type === "cost_report") summary = c.summary || `Est. $${c.total_usd_estimate ?? 0}`;
+        if (!summary && type === "prompt_injection_scan") summary = c.summary || "Injection scan";
+        if (!summary && type === "patch_confidence_report") summary = c.summary || `Confidence ${c.patch_confidence ?? "—"}%`;
+        if (!summary && type === "progressive_delivery") summary = c.summary || `Canary ${c.final_traffic_percent ?? "—"}%`;
+        if (!summary && type === "error_budget_report") summary = c.summary || "Error budget";
+        if (!summary && type === "incident_commander_report") summary = c.summary || `Incident ${c.incident_id || ""}`;
+        if (!summary && type === "last_known_good_image") {
+          summary = `Rollback target: ${c.image || c.image_tag || "unknown"}${c.simulated ? " (simulated)" : ""}.`;
+        }
+        if (!summary && type === "deployment_info") {
+          summary =
+            coerceText(c.summary) ||
+            (c.simulated
+              ? `Simulated deploy of ${c.image_tag || "image"}.`
+              : `Deployed ${c.image_tag || c.image || "image"} to ${c.environment || "staging"}.`);
+          verdict = verdict || (c.simulated ? "simulated" : c.success === false ? "failed" : "deployed");
+        }
+        if (!summary && type === "monitoring_summary") {
+          summary =
+            coerceText(c.summary) ||
+            `${c.checks_performed ?? 0} check(s), ${c.alerts ?? 0} alert(s), final status ${c.final_status || "unknown"}.`;
+        }
+        if (!verdict && type === "secrets_scan") verdict = c.passed === false ? "fail" : c.passed ? "pass" : verdict;
+        if (!verdict && (type === "container_security_scan" || type === "iac_security_scan")) {
+          verdict = c.passed === false ? "fail" : c.passed ? "pass" : verdict;
+        }
+        return { verdict, summary };
+      }
+
+      function artifactHighlights(a) {
+        const c = a.content || {};
+        const type = a.artifact_type || "";
+        const items = [];
+        if (type === "service_graph") {
+          if (c.root_service) items.push(`Root service: ${c.root_service}`);
+          items.push(`Topology: ${c.node_count ?? "—"} nodes · ${c.edge_count ?? "—"} edges`);
+          if ((c.changed_services || []).length) items.push(`Changed services: ${c.changed_services.join(", ")}`);
+          if ((c.downstream_hint || []).length) items.push(`Downstream: ${c.downstream_hint.slice(0, 6).join(", ")}`);
+        } else if (type === "sbom") {
+          const stats = c.stats || {};
+          items.push(`Format: ${c.bomFormat || "CycloneDX"} ${c.specVersion || ""}`.trim());
+          items.push(`Components: ${stats.component_count ?? (c.components || []).length}`);
+          if ((stats.sources || []).length) items.push(`Sources: ${stats.sources.join(", ")}`);
+          const app = c.metadata?.component;
+          if (app?.name) items.push(`Application: ${app.name} @ ${app.version || "unknown"}`);
+        } else if (type === "change_risk_report") {
+          const dims = c.dimensions || {};
+          items.push(
+            `Dimensions: code ${dims.code_risk ?? "—"}, security ${dims.security_risk ?? "—"}, blast ${dims.blast_radius ?? "—"}`
+          );
+          if ((c.recommendations || []).length) items.push(`Recommendation: ${c.recommendations[0]}`);
+        } else if (type === "release_passport") {
+          const checks = c.checks || {};
+          const failed = Object.entries(checks).filter(([, ok]) => !ok).map(([k]) => k);
+          items.push(`Release ID: ${c.release_id || "—"} · ${c.repository || ""}@${(c.commit || "").slice(0, 8)}`);
+          if (failed.length) items.push(`Failed checks: ${failed.join(", ")}`);
+          else items.push("All release checks passed.");
+        } else if (type === "audit_trail") {
+          for (const ev of (c.events || []).slice(-3)) {
+            items.push(`${ev.ts || ""}: ${ev.action} (${ev.actor}) → ${ev.outcome}`);
+          }
+        } else if (type === "test_intelligence") {
+          if ((c.selected_tests || []).length) items.push(`Selected: ${c.selected_tests.slice(0, 5).join(", ")}`);
+          const flaky = c.flaky_analysis || {};
+          if (flaky.flaky_count) items.push(`Flaky indicators: ${flaky.flaky_count}`);
+        } else if (type === "prompt_injection_scan") {
+          if (c.files_scanned != null) items.push(`Scanned ${c.files_scanned} file(s), skipped ${c.files_skipped ?? 0} excluded path(s)`);
+          for (const f of (c.findings || []).slice(0, 4)) {
+            const loc = f.file ? `${f.file}:${f.line || "?"}` : `${f.source || "content"}:${f.line || "?"}`;
+            items.push(
+              `${f.rule_id} (${f.severity}) · ${loc} — ${f.snippet || f.recommended_action || ""}`
+            );
+          }
+          if ((c.remediation_steps || []).length) items.push(`Fix: ${c.remediation_steps[0]}`);
+        } else if (type === "secrets_scan") {
+          for (const f of (c.findings || []).slice(0, 4)) {
+            items.push(`${f.type} · ${f.file}:${f.line_hint || "?"} — ${f.recommended_action || ""}`);
+          }
+        }
+        if (!items.length) return "";
+        return `<ul class="artifact-highlights">${items.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`;
+      }
+
+      function verdictClass(v) {
+        const s = String(v || "").toLowerCase();
+        if (["critical", "fail", "failed", "rejected", "rolled_back", "auto_rolled_back"].includes(s)) return "severity-critical";
+        if (["high", "blocked"].includes(s)) return "severity-high";
+        if (["medium", "warn", "warning"].includes(s)) return "severity-medium";
+        return "severity-low";
+      }
+
+      function renderArtifacts() {
+        const list = document.getElementById("artifact-list");
+        const empty = document.getElementById("artifact-empty");
+        if (!state.artifacts.length) {
+          list.style.display = "none";
+          empty.style.display = "";
+          return;
+        }
+        empty.style.display = "none";
+        list.style.display = "flex";
+        const open = new Set([...list.querySelectorAll("details[open]")].map((d) => d.dataset.id));
+        list.innerHTML = state.artifacts
+          .map((a) => {
+            const { verdict, summary } = artifactSummary(a);
+            const meta = [];
+            if (a.duration_seconds) meta.push(`${Number(a.duration_seconds).toFixed(1)}s`);
+            if (a.tokens_used) meta.push(`${a.tokens_used} tokens`);
+            if (a.content && a.content.analysis_mode) meta.push(a.content.analysis_mode);
+            const when = parseTs(a.created_at);
+            return `<div class="artifact">
+              <div class="artifact-head">
+                <span class="artifact-type">${escapeHtml(a.artifact_type)}</span>
+                ${verdict ? `<span class="${verdictClass(verdict)}" style="padding:2px 8px;border-radius:999px;font-size:11px">${escapeHtml(String(verdict))}</span>` : ""}
+                <span class="muted-label">${escapeHtml(meta.join(" · "))}</span>
+                <span class="artifact-time">${when ? escapeHtml(when.toLocaleTimeString()) : ""}</span>
+              </div>
+              ${summary ? `<div class="artifact-summary">${escapeHtml(summary)}</div>` : ""}
+              ${artifactHighlights(a)}
+              <details data-id="${escapeHtml(a.id)}" ${open.has(a.id) ? "open" : ""}>
+                <summary>JSON</summary>
+                <pre><code>${escapeHtml(JSON.stringify(a.content, null, 2))}</code></pre>
+              </details>
+            </div>`;
+          })
+          .join("");
+      }
+
+      function renderMonitoringForRun() {
+        const el = document.getElementById("mon-status");
+        const summary = state.artifacts.filter((a) => a.artifact_type === "monitoring_summary").pop();
+        const alerts = state.artifacts.filter((a) => a.artifact_type === "monitoring_alert").length;
+        const r = state.run;
+        if (summary) {
+          const c = summary.content || {};
+          el.textContent = `Monitoring: ${c.checks_performed ?? 0} checks, ${c.alerts ?? alerts} alert(s), final status ${c.final_status || r.status}.`;
+        } else if (r && r.status === "monitoring") {
+          el.textContent = `Monitoring in progress (${alerts} alert(s) so far).`;
+        } else if (r && r.status === "approved") {
+          el.textContent = "This run passed every gate but was not deployed (no Docker runtime), so there is nothing to monitor.";
+        } else {
+          el.textContent = "Post-deploy monitoring results appear here for deployed runs.";
+        }
+      }
+
+      async function triggerRun(ev) {
+        ev.preventDefault();
+        const err = document.getElementById("trigger-err");
+        err.classList.remove("on");
+        const btn = document.getElementById("run-btn");
+        const payload = {
+          clone_url: document.getElementById("clone-url").value.trim(),
+          branch: document.getElementById("branch-input").value.trim() || "main",
+        };
+        const name = document.getElementById("repo-input").value.trim();
+        if (name) payload.repo_full_name = name;
+        if (!payload.clone_url) {
+          err.textContent = "Enter a git URL (or a local repository path in development).";
+          err.classList.add("on");
+          document.getElementById("clone-url").focus();
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = "Starting…";
+        try {
+          const res = await api("/api/v1/pipeline/trigger", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          localStorage.setItem("orion.lastRepo", JSON.stringify({ ...payload, repo_full_name: name }));
+          toast(`Run started (${res.executor} executor) for ${res.commit_id.slice(0, 8)}`);
+          await loadRuns();
+          await selectRun(res.pipeline_run_id);
+        } catch (e) {
+          err.textContent = e.message;
+          err.classList.add("on");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Run Pipeline";
+        }
+      }
+
+      async function runAction(action) {
+        if (!state.runId) return;
+        if (action === "cancel" && !confirm("Cancel this pipeline run?")) return;
+        try {
+          const res = await api(`/api/v1/pipeline/runs/${state.runId}/${action}`, { method: "POST" });
+          if (action === "retry") {
+            toast(`Retry queued (${res.executor} executor)`);
+            state.lastLoggedStatus = null;
+            state.logKeys = new Set();
+            state.lastTerminalRun = null;
+            wsManager.follow(state.runId);
+            wsManager.finished = false;
+          } else {
+            toast(res.cancelled ? "Run cancelled" : `Run already ${res.status}`);
+          }
+        } catch (e) {
+          toast(`${action} failed: ${e.message}`);
+        }
+        await refreshSelected();
+        loadRuns();
+      }
+
+      async function analyzeLogs() {
+        const text = document.getElementById("mon-input").value;
+        const out = document.getElementById("mon-result");
+        if (!text.trim()) {
+          out.innerHTML = `<span class="inline-err on">Paste some log lines first.</span>`;
+          return;
+        }
+        const pr = document.getElementById("mon-prog");
+        const btn = document.getElementById("mon-analyze");
+        pr.classList.add("on");
+        btn.disabled = true;
+        let logType = "server_timeout";
+        try {
+          const pre = await api("/api/v1/tools/text-analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, operations: ["classify_log"] }),
+          });
+          if (pre && pre.log_type) logType = pre.log_type;
+        } catch {
+          /* keep default log type */
+        }
+        const fd = new FormData();
+        fd.append("agent_type", "log_analysis");
+        fd.append("log_type", logType);
+        fd.append("text_input", text);
+        try {
+          const data = await api("/api/v1/multimodal/analyze", { method: "POST", body: fd });
+          const r = data.result || {};
+          countUp(document.getElementById("m-err"), r.error_count ?? 0);
+          countUp(document.getElementById("m-warn"), r.warning_count ?? 0);
+          const cmds = (r.exact_fix_commands || []).slice(0, 5);
+          out.innerHTML =
+            `<span class="${severityClass(r.severity)}" style="padding:2px 8px;border-radius:999px;font-size:11px">${escapeHtml(r.severity || "low")}</span> ` +
+            `${escapeHtml(r.summary || "")}` +
+            (r.root_cause ? `<div style="margin-top:6px"><b>Root cause:</b> ${escapeHtml(String(r.root_cause))}</div>` : "") +
+            (cmds.length ? `<ol>${cmds.map((c) => `<li class="mono">${escapeHtml(String(c))}</li>`).join("")}</ol>` : "");
+        } catch (e) {
+          out.innerHTML = `<span class="inline-err on">${escapeHtml(e.message)}</span>`;
+        } finally {
+          pr.classList.remove("on");
+          btn.disabled = false;
+        }
+      }
+
+      async function pollHealth() {
+        const pill = document.getElementById("pill-api");
+        try {
+          const h = await api("/health");
+          setDot("dot-api", "live");
+          pill.title = `API ok · executor ${h.executor} · redis ${h.redis ? "up" : "down"} · deploy ${h.deploy_mode} · ${h.environment}`;
+          document.getElementById("m-up").textContent = fmtDuration((h.uptime_seconds || 0) * 1000);
+          const llm = h.llm || {};
+          const llmPill = document.getElementById("pill-llm");
+          const llmState = { ok: "ok", unverified: "live", disabled: "off", auth_failed: "warn", error: "warn" }[llm.status] || "off";
+          setDot("dot-llm", llmState);
+          llmPill.title = `LLM ${llm.status || "unknown"}${llm.detail ? " · " + llm.detail : ""}`;
+          const banner = document.getElementById("runtime-banner");
+          if (llm.status === "auth_failed") {
+            banner.style.display = "block";
+            banner.textContent =
+              "Anthropic rejected ANTHROPIC_API_KEY (401). Agents are using deterministic heuristics until a valid key is set in .env and the API is restarted.";
+          } else {
+            banner.style.display = "none";
+          }
+          const hints = [];
+          hints.push(`Executor: ${h.executor}${h.executor === "inline" ? " (runs inside the API process; no Redis/Celery needed)" : ""}.`);
+          hints.push(h.deploy_mode === "skip" ? "Deploy: skipped (DEPLOY_MODE=skip) — runs end as approved." : h.deploy_mode === "simulate" ? "Deploy: simulated (no Docker)." : `Deploy: ${h.deploy_mode}.`);
+          if (h.llm_mode !== "live") hints.push("LLM: heuristic mode (no API key).");
+          document.getElementById("runtime-hint").textContent = hints.join(" ");
+        } catch {
+          setDot("dot-api", "warn");
+          pill.title = `API unreachable at ${API} (use ?api=http://host:port to point the dashboard elsewhere)`;
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        setupUserMenu();
+        bindSwitch("set-auto-pr");
+        bindSwitch("set-notify-block");
+        document.querySelectorAll(".settings-tab").forEach((btn) => {
+          btn.addEventListener("click", () => switchSettingsTab(btn.dataset.settingsTab));
+        });
+        if (location.hash === "#settings") openSettings("profile");
+
+        checkAuthStatus();
+        setInterval(checkAuthStatus, 30000);
+        setupDropzone("git-dropzone", "git-file-input", "git-file-list");
+        setupDropzone("pay-dropzone", "pay-file-input", "pay-file-list");
+        buildStages();
+
+        document.querySelectorAll(".panel.card-enter").forEach((p, idx) => {
+          p.style.animationDelay = `${idx * 80}ms`;
+        });
+
+        wireAuthLinks();
+        renderNavigation().catch(() => {});
+
+        const last = JSON.parse(localStorage.getItem("orion.lastRepo") || "null");
+        if (last) {
+          document.getElementById("clone-url").value = last.clone_url || "";
+          document.getElementById("branch-input").value = last.branch || "main";
+          document.getElementById("repo-input").value = last.repo_full_name || "";
+        }
+
+        document.getElementById("trigger-form").addEventListener("submit", triggerRun);
+        document.getElementById("pipeline-id").addEventListener("change", (e) => selectRun(e.target.value));
+        document.getElementById("refresh-btn").addEventListener("click", () => {
+          const id = document.getElementById("pipeline-id").value.trim();
+          if (id && id !== state.runId) selectRun(id);
+          else refreshSelected();
+          loadRuns();
+        });
+        document.getElementById("retry-btn").addEventListener("click", () => runAction("retry"));
+        document.getElementById("cancel-btn").addEventListener("click", () => runAction("cancel"));
+        document.getElementById("runs-body").addEventListener("click", (e) => {
+          const row = e.target.closest("tr[data-id]");
+          if (row) selectRun(row.dataset.id);
+        });
+        document.getElementById("mon-analyze").addEventListener("click", analyzeLogs);
+
+        const termEl = document.getElementById("agent-terminal");
+        termEl.addEventListener("scroll", () => {
+          const atBottom = termEl.scrollTop + termEl.clientHeight >= termEl.scrollHeight - 28;
+          termEl.dataset.stick = atBottom ? "1" : "0";
+        });
+        rebuildTerminalLogs();
+
+        const auto = document.getElementById("auto-refresh");
+        const toggleAuto = () => {
+          auto.classList.toggle("on");
+          auto.setAttribute("aria-checked", String(auto.classList.contains("on")));
+        };
+        auto.addEventListener("click", toggleAuto);
+        auto.addEventListener("keydown", (e) => {
+          if (e.key === " " || e.key === "Enter") {
+            e.preventDefault();
+            toggleAuto();
+          }
+        });
+
+        pollHealth();
+        setInterval(pollHealth, 10000);
+        loadRuns().then(() => {
+          const fromUrl = new URLSearchParams(location.search).get("run");
+          const initial = fromUrl || (state.runs[0] && state.runs[0].id);
+          if (initial) selectRun(initial);
+        });
+        setInterval(() => {
+          if (!auto.classList.contains("on") || document.hidden) return;
+          loadRuns();
+          if (state.run && !TERMINAL.has(state.run.status)) refreshSelected();
+        }, 5000);
+
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") {
+            document.querySelectorAll(".modal-overlay").forEach((m) => {
+              if (m.style.display === "flex") closeModal(m.id);
+            });
+          }
+        });
+
+        document.addEventListener("mousedown", (e) => {
+          const t = e.target.closest(".btn-primary, .btn-modal-trigger");
+          if (!t) return;
+          const r = t.getBoundingClientRect();
+          const x = e.clientX - r.left;
+          const y = e.clientY - r.top;
+          const span = document.createElement("span");
+          span.className = "ripple";
+          span.style.position = "absolute";
+          span.style.left = x + "px";
+          span.style.top = y + "px";
+          span.style.width = "10px";
+          span.style.height = "10px";
+          span.style.borderRadius = "999px";
+          span.style.background = "rgba(255,255,255,0.35)";
+          span.style.pointerEvents = "none";
+          span.style.transform = "scale(0)";
+          span.style.opacity = "0.4";
+          t.style.position = t.style.position || "relative";
+          t.appendChild(span);
+          span.animate(
+            [{ transform: "scale(0)", opacity: 0.4 }, { transform: "scale(4)", opacity: 0 }],
+            { duration: 500, easing: "cubic-bezier(0.4,0,0.2,1)" }
+          ).onfinish = () => span.remove();
+        });
+
+      });
+    </script>
+  </body>
+</html>

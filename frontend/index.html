@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DevOps Agent Console</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="top-bar" aria-hidden="true"></div>
+    <div class="bg-system">
+      <div class="bg-noise"></div>
+      <div class="bg-glow"></div>
+      <div class="bg-dots"></div>
+    </div>
+    <div id="root"></div>
+    <script>
+      window.__ORION_API_BASE__ = window.__ORION_API_BASE__ || "http://localhost:8000";
+    </script>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

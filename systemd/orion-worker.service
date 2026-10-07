@@ -1,0 +1,21 @@
+[Unit]
+Description=ORION AI Pipeline Celery Worker
+After=network.target postgresql.service redis.service orion-api.service
+Wants=postgresql.service redis.service
+
+[Service]
+Type=exec
+User=orion
+Group=orion
+WorkingDirectory=/opt/orion
+EnvironmentFile=/etc/orion/orion.env
+ExecStart=/opt/orion/venv/bin/celery -A app.tasks.pipeline_tasks.celery_app worker --loglevel=info --concurrency=4 --logfile=/var/log/orion/worker.log
+Restart=always
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=orion-worker
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

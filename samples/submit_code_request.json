@@ -1,0 +1,44 @@
+{
+  "repo_name": "payment-service",
+  "code": "def login(user, password):\n    query = f\"SELECT * FROM users WHERE name='{user}' AND pass='{password}'\"\n    return db.execute(query)",
+  "diff": "- return db.execute(query)\n+ return db.execute(parameterized_query)",
+  "config_text": "debug: true\nsecret: hardcoded",
+  "repo_files": {
+    "app/auth.py": "def login(u, p): return db.execute(f\"SELECT * FROM users WHERE u='{u}'\")",
+    "config/app.yaml": "debug: true\nsecret: hardcoded"
+  },
+  "multimodal_inputs": [
+    {
+      "modality": "code",
+      "content": "def login(u, p): return db.execute(query)",
+      "name": "auth_snippet",
+      "metadata": {
+        "language": "python"
+      }
+    },
+    {
+      "modality": "config",
+      "content": "debug: true\nsecret: hardcoded",
+      "name": "app_config",
+      "metadata": {
+        "format": "yaml"
+      }
+    },
+    {
+      "modality": "image_ref",
+      "content": "s3://future-artifacts/pipeline-screenshot.png",
+      "name": "future_ui_screenshot",
+      "metadata": {
+        "note": "placeholder reference for future screenshot processing"
+      }
+    },
+    {
+      "modality": "metrics",
+      "content": "cpu=78,latency_p95=280ms,error_rate=0.4%",
+      "name": "perf_metrics",
+      "metadata": {
+        "window": "5m"
+      }
+    }
+  ]
+}

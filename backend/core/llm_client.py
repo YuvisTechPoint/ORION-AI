@@ -1,0 +1,332 @@
+import json
+import logging
+import time
+from typing import Any
+
+import httpx
+
+from core.config import Settings
+from core.heuristic_llm import heuristic_for_agent
+
+LOGGER = logging.getLogger(__name__)
+
+
+class LLMClient:
+    """Generic LLM API wrapper returning structured JSON.
+
+    - Reads API key and base URL from settings
+    - Retries failed requests with exponential backoff
+    - Always returns a dict (structured JSON) so callers don't need to parse strings
+    """
+
+    def __init__(self, settings: Settings) -> None:
+        # Prefer explicit Hugging Face key when provided; keep LLM_API_KEY as backward-compatible fallback.
+        self._api_key = (settings.huggingface_api_key or settings.llm_api_key or "").strip()
+        self._base_url = settings.llm_base_url
+        self._model = settings.llm_model
+        self._provider = (settings.llm_provider or "openai").strip().lower()
+        self._llm_mode = (settings.llm_mode or "auto").strip().lower()
+        self._hf_api_url = settings.hf_api_url.rstrip("/")
+        try:
+            parsed = json.loads(settings.llm_agent_models_json or "{}")
+            self._agent_models = parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            self._agent_models = {}
+        self._disabled_after_auth_failure = False
+
+    def _model_for_agent(self, agent_name: str | None) -> str:
+        if not agent_name:
+            return self._model
+        selected = self._agent_models.get(agent_name)
+        return str(selected).strip() if selected else self._model
+
+    def _parse_structured_output(self, content: str, raw_fallback: Any | None = None) -> dict[str, Any]:
+        try:
+            parsed = json.loads(content)
+            if isinstance(parsed, dict):
+                return parsed
+            return {"summary": "LLM returned non-dict JSON", "value": parsed}
+        except Exception:
+            if raw_fallback is not None:
+                return {"summary": "LLM returned non-JSON content", "value": content, "raw": raw_fallback}
+            return {"summary": "LLM returned non-JSON content", "value": content}
+
+    def _is_hf_router_chat_url(self) -> bool:
+        return "router.huggingface.co/v1/chat/completions" in self._hf_api_url
+
+    @staticmethod
+    def _http_error_detail(exc: httpx.HTTPStatusError) -> str:
+        try:
+            body = exc.response.text if exc.response is not None else ""
+        except Exception:
+            body = ""
+        return body.strip()[:600]
+
+    def _parse_hf_router_response(self, data: Any) -> dict[str, Any]:
+        content = ""
+        if isinstance(data, dict):
+            try:
+                content = str(data.get("choices", [])[0].get("message", {}).get("content", ""))
+            except Exception:
+                content = str(data.get("content") or data.get("text") or "")
+        return self._parse_structured_output(content or json.dumps(data), raw_fallback=data)
+
+    def _call_hf_router_chat(self, prompt: str, model: str) -> dict[str, Any]:
+        headers = {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "Return strict JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.0,
+            "max_tokens": 1536,
+        }
+        with httpx.Client(timeout=60.0) as client:
+            resp = client.post(self._hf_api_url, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+        return self._parse_hf_router_response(data)
+
+    def _call_hf_router_inference(self, prompt: str, model: str) -> dict[str, Any]:
+        headers = {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
+        url = f"https://router.huggingface.co/hf-inference/models/{model}"
+        payload = {
+            "inputs": prompt,
+            "parameters": {
+                "return_full_text": False,
+                "temperature": 0.0,
+                "max_new_tokens": 1536,
+            },
+        }
+        with httpx.Client(timeout=60.0) as client:
+            resp = client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+
+        generated_text = ""
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            generated_text = str(data[0].get("generated_text", ""))
+        elif isinstance(data, dict):
+            generated_text = str(data.get("generated_text", "") or data.get("summary_text", "") or data.get("text", ""))
+        return self._parse_structured_output(generated_text or json.dumps(data), raw_fallback=data)
+
+    def _generate_via_huggingface(
+        self,
+        prompt: str,
+        max_retries: int,
+        backoff_seconds: float,
+        agent_name: str | None,
+    ) -> dict[str, Any]:
+        if self._disabled_after_auth_failure:
+            return self._fallback_after_failure(prompt, agent_name)
+
+        model = self._model_for_agent(agent_name)
+        if self._is_hf_router_chat_url():
+            return self._generate_via_hf_router_with_retries(
+                prompt=prompt,
+                model=model,
+                max_retries=max_retries,
+                backoff_seconds=backoff_seconds,
+                agent_name=agent_name,
+            )
+
+        url = f"{self._hf_api_url}/{model}"
+        headers = {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
+        payload = {
+            "inputs": prompt,
+            "parameters": {
+                "return_full_text": False,
+                "temperature": 0.0,
+                "max_new_tokens": 1536,
+            },
+        }
+
+        last_exc: Exception | None = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                with httpx.Client(timeout=60.0) as client:
+                    resp = client.post(url, headers=headers, json=payload)
+                    resp.raise_for_status()
+                    data = resp.json()
+
+                generated_text = ""
+                if isinstance(data, list) and data and isinstance(data[0], dict):
+                    generated_text = str(data[0].get("generated_text", ""))
+                elif isinstance(data, dict):
+                    generated_text = str(data.get("generated_text", "") or data.get("summary_text", "") or data.get("text", ""))
+
+                return self._parse_structured_output(generated_text or json.dumps(data), raw_fallback=data)
+
+            except httpx.HTTPStatusError as exc:
+                last_exc = exc
+                status_code = exc.response.status_code if exc.response is not None else None
+                LOGGER.warning("Hugging Face LLM call attempt %s failed: %s", attempt, exc)
+                if status_code in {401, 403}:
+                    self._disabled_after_auth_failure = True
+                    break
+                if status_code == 410:
+                    LOGGER.warning("Legacy HF inference endpoint returned 410; retrying via HF router chat completions")
+                    return self._generate_via_hf_router_with_retries(
+                        prompt=prompt,
+                        model=model,
+                        max_retries=max_retries,
+                        backoff_seconds=backoff_seconds,
+                        agent_name=agent_name,
+                    )
+                if attempt < max_retries:
+                    time.sleep(backoff_seconds * (2 ** (attempt - 1)))
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                LOGGER.warning("Hugging Face LLM call attempt %s failed: %s", attempt, exc)
+                if attempt < max_retries:
+                    time.sleep(backoff_seconds * (2 ** (attempt - 1)))
+
+        LOGGER.exception("Hugging Face LLM request failed after %s attempts: %s", max_retries, last_exc)
+        return self._fallback_after_failure(prompt, agent_name)
+
+    def _generate_via_hf_router_with_retries(
+        self,
+        prompt: str,
+        model: str,
+        max_retries: int,
+        backoff_seconds: float,
+        agent_name: str | None = None,
+    ) -> dict[str, Any]:
+        last_exc: Exception | None = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                return self._call_hf_router_chat(prompt, model)
+            except httpx.HTTPStatusError as exc:
+                last_exc = exc
+                status_code = exc.response.status_code if exc.response is not None else None
+                LOGGER.warning(
+                    "Hugging Face router call attempt %s failed: %s | detail=%s",
+                    attempt,
+                    exc,
+                    self._http_error_detail(exc),
+                )
+                if status_code in {401, 403}:
+                    self._disabled_after_auth_failure = True
+                    break
+                if status_code == 400:
+                    try:
+                        LOGGER.warning("Retrying via HF router inference endpoint for model %s after chat-completions 400", model)
+                        return self._call_hf_router_inference(prompt, model)
+                    except httpx.HTTPStatusError as inf_exc:
+                        last_exc = inf_exc
+                        LOGGER.warning(
+                            "HF router inference fallback failed: %s | detail=%s",
+                            inf_exc,
+                            self._http_error_detail(inf_exc),
+                        )
+                    except Exception as inf_exc:  # noqa: BLE001
+                        last_exc = inf_exc
+                        LOGGER.warning("HF router inference fallback failed: %s", inf_exc)
+                if attempt < max_retries:
+                    time.sleep(backoff_seconds * (2 ** (attempt - 1)))
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                LOGGER.warning("Hugging Face router call attempt %s failed: %s", attempt, exc)
+                if attempt < max_retries:
+                    time.sleep(backoff_seconds * (2 ** (attempt - 1)))
+
+        LOGGER.exception("Hugging Face router request failed after %s attempts: %s", max_retries, last_exc)
+        return self._fallback_after_failure(prompt, agent_name)
+
+    def _heuristic(self, prompt: str, agent_name: str | None) -> dict[str, Any]:
+        LOGGER.info("Using heuristic LLM response for agent=%s", agent_name or "unknown")
+        return heuristic_for_agent(agent_name, prompt)
+
+    def _should_use_heuristic(self) -> bool:
+        return self._llm_mode == "mock"
+
+    def _fallback_after_failure(self, prompt: str, agent_name: str | None) -> dict[str, Any]:
+        if self._llm_mode in {"auto", "mock"}:
+            return self._heuristic(prompt, agent_name)
+        return {
+            "summary": "LLM call failed after retries",
+            "issues": [
+                {
+                    "type": "llm_call_error",
+                    "severity": "high",
+                    "line": "n/a",
+                    "fix": "Verify API key, model, network connectivity, and base URL",
+                }
+            ],
+        }
+
+    def generate(
+        self,
+        prompt: str,
+        max_retries: int = 3,
+        backoff_seconds: float = 1.0,
+        agent_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Call the LLM and return structured JSON.
+
+        Always returns a dict. On error, returns an explanatory fallback dict.
+        """
+        if self._should_use_heuristic() or not self._api_key:
+            return self._heuristic(prompt, agent_name)
+
+        if self._provider == "huggingface":
+            return self._generate_via_huggingface(
+                prompt,
+                max_retries=max_retries,
+                backoff_seconds=backoff_seconds,
+                agent_name=agent_name,
+            )
+
+        model = self._model_for_agent(agent_name)
+
+        if self._disabled_after_auth_failure:
+            return self._fallback_after_failure(prompt, agent_name)
+
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "Return strict JSON only."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.0,
+        }
+        headers = {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
+
+        last_exc: Exception | None = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                with httpx.Client(timeout=30.0) as client:
+                    resp = client.post(self._base_url, headers=headers, json=payload)
+                    resp.raise_for_status()
+                    data = resp.json()
+
+                # Standard OpenAI-like response with choices -> message -> content
+                content = None
+                try:
+                    content = data["choices"][0]["message"]["content"]
+                except Exception:
+                    # Some LLMs return 'text' or 'choices' differently
+                    content = data.get("content") or data.get("text") or json.dumps(data)
+
+                return self._parse_structured_output(str(content), raw_fallback=data)
+
+            except httpx.HTTPStatusError as exc:
+                last_exc = exc
+                status_code = exc.response.status_code if exc.response is not None else None
+                LOGGER.warning("LLM call attempt %s failed: %s", attempt, exc)
+                if status_code in {401, 403}:
+                    self._disabled_after_auth_failure = True
+                    break
+                if attempt < max_retries:
+                    sleep_for = backoff_seconds * (2 ** (attempt - 1))
+                    time.sleep(sleep_for)
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                LOGGER.warning("LLM call attempt %s failed: %s", attempt, exc)
+                if attempt < max_retries:
+                    sleep_for = backoff_seconds * (2 ** (attempt - 1))
+                    time.sleep(sleep_for)
+
+        LOGGER.exception("LLM request failed after %s attempts: %s", max_retries, last_exc)
+        return self._fallback_after_failure(prompt, agent_name)

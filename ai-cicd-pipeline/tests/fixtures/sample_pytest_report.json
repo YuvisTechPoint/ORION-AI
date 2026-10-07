@@ -1,0 +1,134 @@
+{
+  "created": 1767225600.123,
+  "duration": 2.481,
+  "exitcode": 1,
+  "root": "/tmp/pipeline/repo",
+  "environment": {
+    "Python": "3.11.9",
+    "Platform": "Linux-6.5.0-x86_64-with-glibc2.36",
+    "Packages": {"pytest": "8.2.0", "pluggy": "1.5.0"},
+    "Plugins": {"json-report": "1.5.0", "metadata": "3.1.1", "timeout": "2.3.1"}
+  },
+  "summary": {"passed": 5, "failed": 2, "total": 7, "collected": 7},
+  "collectors": [
+    {"nodeid": "", "outcome": "passed", "result": [{"nodeid": "tests", "type": "Dir"}]},
+    {
+      "nodeid": "tests/test_users.py",
+      "outcome": "passed",
+      "result": [
+        {"nodeid": "tests/test_users.py::test_get_user", "type": "Function", "lineno": 8},
+        {"nodeid": "tests/test_users.py::test_get_user_not_found", "type": "Function", "lineno": 15},
+        {"nodeid": "tests/test_users.py::test_user_creation", "type": "Function", "lineno": 21},
+        {"nodeid": "tests/test_users.py::test_list_users", "type": "Function", "lineno": 30}
+      ]
+    },
+    {
+      "nodeid": "tests/test_models.py",
+      "outcome": "passed",
+      "result": [
+        {"nodeid": "tests/test_models.py::test_user_repr", "type": "Function", "lineno": 6},
+        {"nodeid": "tests/test_models.py::test_email_lowercased", "type": "Function", "lineno": 11},
+        {"nodeid": "tests/test_models.py::test_delete_cascade", "type": "Function", "lineno": 18}
+      ]
+    }
+  ],
+  "tests": [
+    {
+      "nodeid": "tests/test_users.py::test_get_user",
+      "lineno": 8,
+      "outcome": "passed",
+      "keywords": ["test_get_user", "test_users.py", "tests"],
+      "setup": {"duration": 0.0012, "outcome": "passed"},
+      "call": {"duration": 0.0141, "outcome": "passed"},
+      "teardown": {"duration": 0.0004, "outcome": "passed"}
+    },
+    {
+      "nodeid": "tests/test_users.py::test_get_user_not_found",
+      "lineno": 15,
+      "outcome": "passed",
+      "keywords": ["test_get_user_not_found", "test_users.py", "tests"],
+      "setup": {"duration": 0.0009, "outcome": "passed"},
+      "call": {"duration": 0.0102, "outcome": "passed"},
+      "teardown": {"duration": 0.0003, "outcome": "passed"}
+    },
+    {
+      "nodeid": "tests/test_users.py::test_user_creation",
+      "lineno": 21,
+      "outcome": "failed",
+      "keywords": ["test_user_creation", "test_users.py", "tests"],
+      "setup": {"duration": 0.0011, "outcome": "passed"},
+      "call": {
+        "duration": 0.0213,
+        "outcome": "failed",
+        "crash": {
+          "path": "/tmp/pipeline/repo/tests/test_users.py",
+          "lineno": 27,
+          "message": "AssertionError: expected 200 got 422"
+        },
+        "traceback": [
+          {"path": "tests/test_users.py", "lineno": 27, "message": "AssertionError"}
+        ],
+        "longrepr": "client = <starlette.testclient.TestClient object at 0x7f1c2a3b4c10>\n\n    def test_user_creation(client):\n        resp = client.post(\"/users\", json={\"name\": \"alice\"})\n>       assert resp.status_code == 200, f\"expected 200 got {resp.status_code}\"\nE       AssertionError: expected 200 got 422\nE       assert 422 == 200\n\ntests/test_users.py:27: AssertionError"
+      },
+      "teardown": {"duration": 0.0005, "outcome": "passed"}
+    },
+    {
+      "nodeid": "tests/test_users.py::test_list_users",
+      "lineno": 30,
+      "outcome": "passed",
+      "keywords": ["test_list_users", "test_users.py", "tests"],
+      "setup": {"duration": 0.0010, "outcome": "passed"},
+      "call": {"duration": 0.0188, "outcome": "passed"},
+      "teardown": {"duration": 0.0003, "outcome": "passed"}
+    },
+    {
+      "nodeid": "tests/test_models.py::test_user_repr",
+      "lineno": 6,
+      "outcome": "passed",
+      "keywords": ["test_user_repr", "test_models.py", "tests"],
+      "setup": {"duration": 0.0004, "outcome": "passed"},
+      "call": {"duration": 0.0007, "outcome": "passed"},
+      "teardown": {"duration": 0.0002, "outcome": "passed"}
+    },
+    {
+      "nodeid": "tests/test_models.py::test_email_lowercased",
+      "lineno": 11,
+      "outcome": "passed",
+      "keywords": ["test_email_lowercased", "test_models.py", "tests"],
+      "setup": {"duration": 0.0004, "outcome": "passed"},
+      "call": {"duration": 0.0006, "outcome": "passed"},
+      "teardown": {"duration": 0.0002, "outcome": "passed"}
+    },
+    {
+      "nodeid": "tests/test_models.py::test_delete_cascade",
+      "lineno": 18,
+      "outcome": "failed",
+      "keywords": ["test_delete_cascade", "test_models.py", "tests"],
+      "setup": {"duration": 0.0031, "outcome": "passed"},
+      "call": {
+        "duration": 0.0412,
+        "outcome": "failed",
+        "crash": {
+          "path": "/tmp/pipeline/repo/app/models.py",
+          "lineno": 54,
+          "message": "sqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) FOREIGN KEY constraint failed"
+        },
+        "traceback": [
+          {"path": "tests/test_models.py", "lineno": 24, "message": ""},
+          {"path": "app/models.py", "lineno": 54, "message": "IntegrityError"}
+        ],
+        "longrepr": "session = <sqlalchemy.orm.session.Session object at 0x7f1c2a3b5d90>\n\n    def test_delete_cascade(session):\n        user = make_user(session)\n>       delete_user(session, user.id)\n\ntests/test_models.py:24: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _\napp/models.py:54: in delete_user\n    session.commit()\nE   sqlalchemy.exc.IntegrityError: (sqlite3.IntegrityError) FOREIGN KEY constraint failed\nE   [SQL: DELETE FROM users WHERE users.id = ?]\nE   [parameters: (1,)]"
+      },
+      "teardown": {"duration": 0.0007, "outcome": "passed"}
+    }
+  ],
+  "warnings": [
+    {
+      "message": "datetime.datetime.utcnow() is deprecated",
+      "category": "DeprecationWarning",
+      "when": "runtest",
+      "filename": "/tmp/pipeline/repo/app/models.py",
+      "lineno": 12
+    }
+  ]
+}

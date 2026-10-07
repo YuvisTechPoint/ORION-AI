@@ -1,0 +1,20 @@
+[Unit]
+Description=ORION Health Monitor Daemon
+After=network.target orion-api.service
+Wants=orion-api.service
+
+[Service]
+Type=simple
+# Runs as root: it must be able to `systemctl restart` the other ORION units and vacuum journald.
+User=root
+WorkingDirectory=/opt/orion
+EnvironmentFile=/etc/orion/orion.env
+ExecStart=/opt/orion/venv/bin/python -m app.daemon.monitor_daemon
+Restart=always
+RestartSec=10s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=orion-monitor
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+.git
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.env
+nginx/ssl/*.pem
+nginx/logs
+nginx/.htpasswd
+backups
+*.db
+*.log

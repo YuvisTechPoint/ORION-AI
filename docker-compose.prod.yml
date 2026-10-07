@@ -1,0 +1,53 @@
+# Shared production infrastructure for local/staging ORION stacks.
+# Usage:
+#   python scripts/generate_production_env.py
+#   docker compose --env-file .env.prod.infra -f docker-compose.prod.yml up -d
+
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - .env.prod.infra
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-orion}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod.infra}
+      POSTGRES_DB: ${POSTGRES_DB:-orion}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - orion_pgdata:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-orion}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - orion_prod
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - orion_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - orion_prod
+
+volumes:
+  orion_pgdata:
+  orion_redis:
+
+networks:
+  orion_prod:
+    driver: bridge

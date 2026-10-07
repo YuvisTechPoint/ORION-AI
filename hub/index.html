@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ORION Command Hub</title>
+    <link rel="stylesheet" href="hub.css" />
+  </head>
+  <body>
+    <div class="hub-shell">
+      <nav class="hub-nav" id="hub-nav" aria-label="Binary-v2 stacks"></nav>
+      <header class="hub-hero">
+        <h1>ORION Command Hub</h1>
+        <p>
+          Unified control plane for canonical DevOps, ORION CI/CD, and the multi-agent platform —
+          federated pipelines, health matrix, timelines, artifacts, and audit in one console.
+        </p>
+      </header>
+      <div class="hub-grid" id="hub-grid"></div>
+      <section class="hub-ops-section" id="operations-center-section">
+        <div class="hub-cp-head">
+          <h2>Operations Center</h2>
+          <p class="hub-intel__intro">Fleet risk, SLO rollup, incidents, and cross-stack blockers.</p>
+          <button type="button" class="cp-btn" id="ops-refresh">Refresh</button>
+        </div>
+        <div id="ops-center" class="ops-center"></div>
+      </section>
+      <section class="hub-intel-section">
+        <h2>Cross-stack intelligence</h2>
+        <p class="hub-intel__intro">Unified gate fusion metrics from canonical, ORION, and platform APIs.</p>
+        <div id="hub-intel" class="hub-intel"></div>
+      </section>
+      <section class="hub-cp-section" id="control-plane">
+        <div class="hub-cp-head">
+          <h2>Unified control plane</h2>
+          <p class="hub-intel__intro">Federated pipelines, timelines, artifacts, and audit across all stacks.</p>
+          <button type="button" class="cp-btn" id="cp-refresh">Refresh</button>
+        </div>
+        <div id="cp-health" class="cp-health-grid"></div>
+        <div class="cp-filters">
+          <label>Stack <select id="cp-filter-stack"><option value="">All</option><option value="orion">ORION</option><option value="canonical">Canonical</option><option value="platform">Platform</option></select></label>
+          <label>Status <input id="cp-filter-status" type="text" placeholder="blocked_tests" /></label>
+          <label>Repo <input id="cp-filter-repo" type="text" placeholder="acme/widgets" /></label>
+        </div>
+        <div class="cp-table-wrap">
+          <table class="cp-table">
+            <thead>
+              <tr><th>Stack</th><th>Repository</th><th>Branch</th><th>Commit</th><th>Status</th><th>Correlation</th><th>Duration</th></tr>
+            </thead>
+            <tbody id="cp-pipelines-body"></tbody>
+          </table>
+        </div>
+        <div id="cp-detail" class="cp-detail"></div>
+      </section>
+      <footer class="hub-footer">Binary-v2 · Multi-stack DevOps automation · Run <code>.\run_e2e_all.ps1 -Offline</code> to verify</footer>
+    </div>
+    <script src="hub.js"></script>
+    <script src="operations-center.js"></script>
+    <script src="control-plane.js"></script>
+  </body>
+</html>

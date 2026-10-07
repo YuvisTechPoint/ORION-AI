@@ -1,0 +1,30 @@
+{
+  "name": "ORION DevOps",
+  "description": "AI-native CI/CD pipeline, PR intelligence, and release gates for your repositories.",
+  "url": "http://127.0.0.1:8001/ui/",
+  "hook_attributes": {
+    "url": "http://127.0.0.1:8001/api/v1/webhook/github/app",
+    "active": true
+  },
+  "redirect_url": "http://127.0.0.1:8001/api/v1/auth/github/callback",
+  "public": false,
+  "default_permissions": {
+    "contents": "read",
+    "metadata": "read",
+    "pull_requests": "write",
+    "issues": "write",
+    "checks": "write",
+    "statuses": "write",
+    "actions": "read"
+  },
+  "default_events": [
+    "push",
+    "pull_request",
+    "pull_request_review",
+    "check_run",
+    "check_suite",
+    "installation",
+    "installation_repositories"
+  ],
+  "request_oauth_on_install": true
+}

@@ -1,0 +1,86 @@
+{
+    "host":  "127.0.0.1",
+    "stacks":  [
+                   {
+                       "id":  "hub",
+                       "title":  "Command Hub",
+                       "short":  "Hub",
+                       "description":  "Unified control plane with federated pipeline explorer and cross-stack health.",
+                       "ui":  "http://127.0.0.1:5180",
+                       "api":  "http://127.0.0.1:5180",
+                       "health":  "http://127.0.0.1:5180/health",
+                       "ready":  "http://127.0.0.1:5180/ready",
+                       "intelligence":  null,
+                       "metaKeys":  [
+                                        "hub_status"
+                                    ]
+                   },
+                   {
+                       "id":  "canonical",
+                       "title":  "DevOps Console",
+                       "short":  "Console",
+                       "description":  "Submit code, archives, and GitHub repos with OAuth, Auto-PR, and multimodal intelligence.",
+                       "ui":  "http://127.0.0.1:5173",
+                       "api":  "http://127.0.0.1:8000",
+                       "health":  "http://127.0.0.1:8000/health",
+                       "ready":  "http://127.0.0.1:8000/ready",
+                       "intelligence":  "http://127.0.0.1:8000/api/v1/intelligence/dashboard",
+                       "metaKeys":  [
+                                        "qa_mode",
+                                        "llm_mode",
+                                        "queue_backend"
+                                    ]
+                   },
+                   {
+                       "id":  "orion",
+                       "title":  "ORION CI/CD",
+                       "short":  "ORION",
+                       "description":  "Nine-stage webhook pipeline with parallel full scan, simulated deploy, and live WebSocket telemetry.",
+                       "ui":  "http://127.0.0.1:8001/ui/",
+                       "api":  "http://127.0.0.1:8001",
+                       "health":  "http://127.0.0.1:8001/health",
+                       "ready":  "http://127.0.0.1:8001/ready",
+                       "intelligence":  "http://127.0.0.1:8001/api/v1/intelligence/dashboard",
+                       "metaKeys":  [
+                                        "deploy_mode",
+                                        "executor",
+                                        "llm_mode"
+                                    ]
+                   },
+                   {
+                       "id":  "platform",
+                       "title":  "DevOps Platform",
+                       "short":  "Platform",
+                       "description":  "Celery-backed agents with inline fallback, stress testing, and production deployment modes.",
+                       "ui":  "http://127.0.0.1:3000",
+                       "api":  "http://127.0.0.1:8002",
+                       "health":  "http://127.0.0.1:8002/health",
+                       "ready":  "http://127.0.0.1:8002/ready",
+                       "intelligence":  "http://127.0.0.1:8002/api/intelligence/dashboard",
+                       "metaKeys":  [
+                                        "deploy_mode",
+                                        "executor",
+                                        "redis"
+                                    ]
+                   }
+               ],
+    "views":  [
+                  {
+                      "id":  "pipeline",
+                      "label":  "Pipeline",
+                      "href":  "#dashboard"
+                  },
+                  {
+                      "id":  "intelligence",
+                      "label":  "Intelligence",
+                      "href":  "#intelligence",
+                      "modal":  "modal-intelligence"
+                  },
+                  {
+                      "id":  "settings",
+                      "label":  "Settings",
+                      "href":  "#settings",
+                      "modal":  "modal-settings"
+                  }
+              ]
+}

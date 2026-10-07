@@ -1,0 +1,1 @@
+{"repo_name": "sample_project", "code": "example", "repo_files": {"app.py": "def add(a, b):\r\n    return a + b\r\n", "test_app.py": "from simple_project.app import add\r\n\r\n\r\ndef test_add_positive():\r\n    assert add(1, 2) == 3\r\n\r\n\r\ndef test_add_zero():\r\n    assert add(0, 0) == 0\r\n"}, "force_real": true}

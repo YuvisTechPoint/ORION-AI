@@ -14,6 +14,22 @@ if (!(Test-Path $python)) {
     throw "Virtual environment not found at $python"
 }
 
+function Invoke-StepCommand {
+    param(
+        [Parameter(Mandatory)]
+        [scriptblock]$Command
+    )
+    # Native tools (pytest, npm, npx) may write notices to stderr; do not treat that as failure.
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    & $Command
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    if ($exitCode -ne 0) {
+        exit $exitCode
+    }
+}
+
 Write-Host "=== Binary-v2 full E2E verification ===" -ForegroundColor Cyan
 
 $steps = [System.Collections.Generic.List[string]]::new()
@@ -35,10 +51,9 @@ if (-not $SkipCanonical) {
     $savedSyncDatabaseUrl = $env:SYNC_DATABASE_URL
     $env:DATABASE_URL = "sqlite:///./test_devops_platform.db"
     $env:SYNC_DATABASE_URL = "sqlite:///./test_devops_platform.db"
-    & $python -m pytest tests/ -q --tb=line
+    Invoke-StepCommand { & $python -m pytest tests/ -q --tb=line }
     if ($null -ne $savedDatabaseUrl) { $env:DATABASE_URL = $savedDatabaseUrl } else { Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue }
     if ($null -ne $savedSyncDatabaseUrl) { $env:SYNC_DATABASE_URL = $savedSyncDatabaseUrl } else { Remove-Item Env:SYNC_DATABASE_URL -ErrorAction SilentlyContinue }
-    if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
     Pop-Location
 }
 
@@ -46,8 +61,7 @@ if (-not $SkipAiCicd) {
     $step++
     Write-Host "`n[$step/$total] ai-cicd-pipeline tests..." -ForegroundColor Yellow
     Push-Location (Join-Path $root "ai-cicd-pipeline")
-    & $python -m pytest tests/ -q --tb=line
-    if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
+    Invoke-StepCommand { & $python -m pytest tests/ -q --tb=line }
     Pop-Location
 
     $step++
@@ -55,8 +69,7 @@ if (-not $SkipAiCicd) {
     Push-Location (Join-Path $root "ai-cicd-pipeline")
     $e2eArgs = @("scripts/e2e_run.py", "--scenario", "pass")
     if ($Offline) { $e2eArgs += "--offline" }
-    & $python @e2eArgs
-    if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
+    Invoke-StepCommand { & $python @e2eArgs }
     Pop-Location
 }
 
@@ -73,12 +86,11 @@ if (-not $SkipDevops) {
     $dbPath = Join-Path (Get-Location) ".pytest_devops.db"
     $env:DATABASE_URL = "sqlite+aiosqlite:///$($dbPath.Replace('\', '/'))"
     $env:SYNC_DATABASE_URL = "sqlite:///$($dbPath.Replace('\', '/'))"
-    & $python -m pytest tests/ -q --tb=line
+    Invoke-StepCommand { & $python -m pytest tests/ -q --tb=line }
     if ($null -ne $savedAppEnv) { $env:APP_ENV = $savedAppEnv } else { Remove-Item Env:APP_ENV -ErrorAction SilentlyContinue }
     if ($null -ne $savedApiAuth) { $env:API_REQUIRE_AUTH = $savedApiAuth } else { Remove-Item Env:API_REQUIRE_AUTH -ErrorAction SilentlyContinue }
     if ($null -ne $savedDatabaseUrl) { $env:DATABASE_URL = $savedDatabaseUrl } else { Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue }
     if ($null -ne $savedSyncDatabaseUrl) { $env:SYNC_DATABASE_URL = $savedSyncDatabaseUrl } else { Remove-Item Env:SYNC_DATABASE_URL -ErrorAction SilentlyContinue }
-    if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
     Pop-Location
 }
 
@@ -87,11 +99,10 @@ if (-not $SkipPlaywright) {
     Write-Host "`n[$step/$total] Playwright hub smoke..." -ForegroundColor Yellow
     Push-Location (Join-Path $root "e2e")
     if (-not (Test-Path "node_modules")) {
-        npm install --silent
+        Invoke-StepCommand { npm install --silent }
     }
-    npx playwright install chromium
-    npx playwright test tests/hub.spec.ts tests/stacks.spec.ts tests/navigation.spec.ts
-    if ($LASTEXITCODE -ne 0) { Pop-Location; exit $LASTEXITCODE }
+    Invoke-StepCommand { npx playwright install chromium }
+    Invoke-StepCommand { npx playwright test tests/hub.spec.ts tests/stacks.spec.ts tests/navigation.spec.ts }
     Pop-Location
 }
 

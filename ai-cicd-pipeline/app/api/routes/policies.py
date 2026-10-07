@@ -20,7 +20,7 @@ from app.services.policy_enrichment import persist_policy_intelligence, _org_fro
 from app.utils.policy_engine import DEFAULT_POLICIES
 from app.utils.policy_intelligence import build_policy_intelligence_report
 from app.utils.policy_registry import build_policy_registry_report, resolve_effective_policies
-from app.utils.signed_builds import verify_signed_build
+from app.utils.signed_builds import signed_build_verify_options, verify_signed_build
 
 router = APIRouter(prefix="/policies", tags=["Policies"])
 
@@ -99,8 +99,7 @@ async def policies_evaluate(
         commit=(run.commit_id if run else ""),
         repo=repo,
         deployment_info=artifacts.get("deployment_info"),
-        require_signature=settings.require_signed_builds,
-        simulated=not settings.require_signed_builds,
+        **signed_build_verify_options(),
     )
 
     if body.persist and run is not None:

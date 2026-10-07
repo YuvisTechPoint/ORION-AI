@@ -12,7 +12,7 @@ from app.models.pipeline_artifact import PipelineArtifact
 from app.models.pipeline_run import PipelineRun
 from app.utils.artifact_summaries import summarize_artifact
 from app.utils.policy_intelligence import build_policy_intelligence_report
-from app.utils.signed_builds import verify_signed_build
+from app.utils.signed_builds import signed_build_verify_options, verify_signed_build
 
 
 async def _save(db: AsyncSession, run_id: uuid.UUID, artifact_type: str, content: dict[str, Any]) -> None:
@@ -38,8 +38,7 @@ async def persist_policy_intelligence(
         commit=run.commit_id,
         repo=run.repo_full_name,
         deployment_info=artifacts.get("deployment_info"),
-        require_signature=settings.require_signed_builds,
-        simulated=not settings.require_signed_builds,
+        **signed_build_verify_options(),
     )
 
     report = build_policy_intelligence_report(

@@ -48,6 +48,23 @@ def test_signed_build_simulated() -> None:
     assert report["verified"] is True
 
 
+def test_signed_build_cosign_verify(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.utils.signed_builds.run_cosign_verify",
+        lambda image_ref, **_: {"tool": "cosign", "status": "ok", "verified": True, "image_ref": image_ref},
+    )
+    report = verify_signed_build(
+        commit="abc123def456",
+        repo="org/app",
+        deployment_info={"image_tag": "registry.example.com/org/app:abc123de"},
+        require_signature=True,
+        simulated=False,
+        cosign_verify_enabled=True,
+    )
+    assert report["verified"] is True
+    assert report["signer"] == "cosign"
+
+
 def test_tenant_rbac_permissions() -> None:
     tenant = resolve_tenant_context("acme/api", user_roles=["viewer"])
     tenant["rbac_enforced"] = True

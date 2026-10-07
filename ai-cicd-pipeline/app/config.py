@@ -162,6 +162,8 @@ class Settings(BaseSettings):
     service_catalog_min_completeness_percent: int = Field(default=60, alias="SERVICE_CATALOG_MIN_COMPLETENESS_PERCENT")
     service_catalog_intelligence_model: str = Field(default="claude-sonnet-4-20250514")
     require_signed_builds: bool = Field(default=False, alias="REQUIRE_SIGNED_BUILDS")
+    cosign_path: str = Field(default="", alias="COSIGN_PATH")
+    cosign_verify_enabled: bool = Field(default=True, alias="COSIGN_VERIFY_ENABLED")
     tenant_isolation_mode: str = Field(default="org", alias="TENANT_ISOLATION_MODE")
     compliance_packs: str = Field(default="soc2,iso27001,owasp,cis", alias="COMPLIANCE_PACKS")
     finops_llm_cost_per_1k_tokens: float = Field(default=0.003, alias="FINOPS_LLM_COST_PER_1K_TOKENS")

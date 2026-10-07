@@ -77,11 +77,10 @@ Canonical and Platform stacks rely more on **LLM/heuristic security** with weake
 **Impact:** False confidence in supply-chain posture.  
 **Mitigation:** Label `analysis_mode` / `scanner: heuristic` in UI; Phase 4 roadmap integrates real tools.
 
-### SEC-H3: Simulated signed builds / attestation
+### SEC-H3: Simulated signed builds / attestation — **PARTIALLY MITIGATED**
 
 **File:** `signed_builds.py`  
-**Issue:** Cosign-like reports generated without cryptographic verification unless `REQUIRE_SIGNED_BUILDS` strict path.  
-**Impact:** Policy may pass unsigned images in default config (`POLICY_STRICT_REQUIREMENTS=false`).
+**Fix:** When `REQUIRE_SIGNED_BUILDS=true`, ORION runs `cosign verify` when the binary is on PATH (`COSIGN_VERIFY_ENABLED`, `COSIGN_PATH`); digest fallback when Cosign is unavailable. Default dev/sim path remains simulated.
 
 ### SEC-H4: No correlation_id / trace propagation — **RESOLVED**
 

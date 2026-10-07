@@ -17,7 +17,7 @@ from app.utils.finops import compute_pipeline_cost
 from app.utils.policy_engine import evaluate_policies
 from app.utils.policy_intelligence import build_policy_intelligence_report
 from app.utils.policy_registry import resolve_effective_policies
-from app.utils.signed_builds import verify_signed_build
+from app.utils.signed_builds import signed_build_verify_options, verify_signed_build
 from app.utils.tenant_rbac import resolve_tenant_context
 
 
@@ -62,8 +62,7 @@ async def run_phase4_enrichment(
         commit=run.commit_id,
         repo=run.repo_full_name,
         deployment_info=artifacts.get("deployment_info"),
-        require_signature=settings.require_signed_builds,
-        simulated=not settings.require_signed_builds,
+        **signed_build_verify_options(),
     )
     await _save(db, run.id, "signed_build_report", signed)
 
@@ -128,8 +127,7 @@ async def run_phase4_policy_gate(
         commit=run.commit_id,
         repo=run.repo_full_name,
         deployment_info=artifacts.get("deployment_info"),
-        require_signature=settings.require_signed_builds,
-        simulated=not settings.require_signed_builds,
+        **signed_build_verify_options(),
     )
     org = _org_from_repo(run.repo_full_name)
     environment = settings.deploy_environment

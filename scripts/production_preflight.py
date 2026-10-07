@@ -113,6 +113,34 @@ def main() -> int:
         except Exception as exc:  # noqa: BLE001
             problems.append(f"ORION hardening check failed: {exc}")
 
+    canonical_prod = ROOT / "backend" / ".env.production"
+    if canonical_prod.is_file():
+        try:
+            _apply_env(canonical_prod)
+            sys.path.insert(0, str(ROOT / "backend"))
+            from core.config import Settings, check_required_env_vars
+
+            cfg = Settings()
+            check_required_env_vars(cfg)
+            if not cfg.api_require_auth:
+                problems.append("Canonical: API_REQUIRE_AUTH must be true in production")
+        except Exception as exc:  # noqa: BLE001
+            problems.append(f"Canonical validate_startup: {exc}")
+
+    devops_prod = ROOT / "devops-platform" / ".env.production"
+    if devops_prod.is_file():
+        try:
+            _apply_env(devops_prod)
+            sys.path.insert(0, str(ROOT / "devops-platform" / "backend"))
+            from app.config import Settings
+
+            cfg = Settings()
+            cfg.validate_startup()
+            if not cfg.api_require_auth:
+                problems.append("DevOps: API_REQUIRE_AUTH must be true in production")
+        except Exception as exc:  # noqa: BLE001
+            problems.append(f"DevOps validate_startup: {exc}")
+
     result = {
         "ok": not problems,
         "problems": problems,

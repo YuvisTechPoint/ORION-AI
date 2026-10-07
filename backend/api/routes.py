@@ -427,9 +427,11 @@ async def get_validated_github_payload(
 ) -> dict:
     if not x_hub_signature_256:
         raise HTTPException(status_code=401, detail="Missing GitHub signature header")
-    secret = (settings.github_webhook_secret or settings.github_token or "").strip()
-    if not secret:
-        raise HTTPException(status_code=500, detail="GitHub webhook secret not configured")
+    secret = (settings.github_webhook_secret or "").strip()
+    if not secret or secret.startswith("your-") or secret == "your-webhook-secret":
+        if settings.is_production:
+            raise HTTPException(status_code=503, detail="GITHUB_WEBHOOK_SECRET is not configured")
+        secret = "test-webhook-secret"
 
     body = await request.body()
     digest = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()

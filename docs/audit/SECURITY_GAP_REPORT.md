@@ -39,29 +39,35 @@ Canonical and Platform stacks rely more on **LLM/heuristic security** with weake
 
 ## 3. Critical findings
 
-### SEC-C1: ORION WebSocket handler runtime failure
+### SEC-C1: ORION WebSocket handler runtime failure — **RESOLVED**
 
 **File:** `ai-cicd-pipeline/app/main.py`  
-**Issue:** `pipeline_ws` references `channel_for`, `event_bus` without import.  
-**Impact:** Live pipeline telemetry broken; operators may miss stage failures.  
-**Fix:** Import from `app.services.events`.
+**Status:** Fixed — `channel_for` / event bus imported from `app.services.events`.
 
-### SEC-C2: Auth disabled by default
+### SEC-C2: Auth disabled by default — **PARTIALLY MITIGATED**
 
 **Files:** `backend/core/config.py`, `ai-cicd-pipeline/app/config.py`, platform settings  
-**Issue:** `API_REQUIRE_AUTH` / `AUTH_ENABLED` default false.  
-**Impact:** Unauthenticated pipeline trigger, artifact read, intelligence APIs if deployed without explicit hardening.  
-**Mitigation:** Fail-closed in production via `APP_ENV=production` + `REQUIRE_RUNTIME_SECRETS`; verify ops runbooks.
+**Issue:** Dev defaults leave auth off.  
+**Mitigation (2026-10-07):** ORION + DevOps + Canonical auto-enable `API_REQUIRE_AUTH` when `APP_ENV=production`; intelligence dashboards on Canonical/DevOps require auth when enabled; run `scripts/production_preflight.py` before deploy.
+
+### SEC-C3: DevOps webhook fail-open when secret empty — **RESOLVED**
+
+**File:** `devops-platform/backend/app/routers/webhooks.py`  
+**Fix:** `webhook_security.resolve_webhook_secret()` — always verify HMAC; production returns 503 if secret unset.
+
+### SEC-C4: Canonical webhook used GITHUB_TOKEN as HMAC secret — **RESOLVED**
+
+**File:** `backend/api/routes.py`  
+**Fix:** Dedicated `GITHUB_WEBHOOK_SECRET` only; dev test fallback `test-webhook-secret`.
 
 ---
 
 ## 4. High findings
 
-### SEC-H1: Canonical multimodal route gap
+### SEC-H1: Canonical multimodal route gap — **RESOLVED**
 
-**File:** `frontend/src/AnalyzerModals.jsx`  
-**Issue:** Calls `/api/v1/multimodal/git-logs` and `/payment` — not on canonical backend.  
-**Impact:** Broken features; possible client-side error leakage; users may paste sensitive data into wrong flows.
+**File:** `backend/api/multimodal.py`  
+**Status:** Routes registered; verify frontend paths match deployed API version.
 
 ### SEC-H2: Heuristic security scanners presented as scans
 
@@ -76,10 +82,10 @@ Canonical and Platform stacks rely more on **LLM/heuristic security** with weake
 **Issue:** Cosign-like reports generated without cryptographic verification unless `REQUIRE_SIGNED_BUILDS` strict path.  
 **Impact:** Policy may pass unsigned images in default config (`POLICY_STRICT_REQUIREMENTS=false`).
 
-### SEC-H4: No correlation_id / trace propagation
+### SEC-H4: No correlation_id / trace propagation — **RESOLVED (HTTP layer)**
 
-**Issue:** Cannot tie webhook → pipeline → Celery → deploy → Slack across logs.  
-**Impact:** Forensics and audit export gaps for enterprise requirements.
+**Files:** `*/middleware/correlation.py`, `pipeline_run.correlation_id`  
+**Remaining:** Propagate correlation_id into Celery worker logs (medium backlog).
 
 ### SEC-H5: Canonical security agent is LLM-primary
 
@@ -101,11 +107,10 @@ Canonical and Platform stacks rely more on **LLM/heuristic security** with weake
 
 ORION accepts `X-ORION-API-Key` and `X-API-Key`; canonical uses different auth service shapes. Increases misconfiguration risk for operators.
 
-### SEC-M2: Hub client-side cross-origin intelligence fetch
+### SEC-M2: Hub client-side cross-origin intelligence fetch — **PARTIALLY MITIGATED**
 
-**File:** `hub/hub.js`  
-**Issue:** Browser fetches all stack APIs; relies on permissive CORS.  
-**Impact:** CSRF not applicable to GET, but exposes intelligence data to any page user visits if CORS is `*`.
+**Files:** `hub/server.py`, `hub/hub.js`  
+**Fix:** Hub BFF CORS restricted via `HUB_CORS_ORIGINS` (no longer `*`); stack APIs should still use production CORS allowlists.
 
 ### SEC-M3: Session secret defaults
 

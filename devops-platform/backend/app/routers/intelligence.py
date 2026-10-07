@@ -9,7 +9,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.deployment import resolved_deploy_mode
-from app.auth import expected_api_key
+from app.auth import expected_api_key, optional_auth
 from app.config import get_settings
 from app.database import get_db
 from app.models import PipelineRun, StageResult
@@ -26,6 +26,7 @@ router = APIRouter(prefix="/api/intelligence", tags=["intelligence"])
 async def dashboard(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    _auth: dict = Depends(optional_auth),
 ) -> dict:
     settings = get_settings()
     res = await db.execute(select(PipelineRun).order_by(desc(PipelineRun.created_at)).limit(20))

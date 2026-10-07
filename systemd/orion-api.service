@@ -1,5 +1,9 @@
+# DEPRECATED PATH — use ai-cicd-pipeline/systemd/orion-api.service for ORION CI/CD.
+# This file targets the canonical backend (backend.main:app) on port 8000.
+# For ORION production API, install units from ai-cicd-pipeline/systemd/.
+
 [Unit]
-Description=ORION AI Pipeline API Server
+Description=Canonical DevOps API (backend stack)
 After=network.target postgresql.service redis.service
 Wants=postgresql.service redis.service
 
@@ -7,15 +11,16 @@ Wants=postgresql.service redis.service
 Type=exec
 User=orion
 Group=orion
-WorkingDirectory=/opt/orion
-EnvironmentFile=/etc/orion/orion.env
-ExecStart=/opt/orion/venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 4 --log-level info
+WorkingDirectory=/opt/orion/backend
+EnvironmentFile=/etc/orion/canonical.env
+Environment=PYTHONPATH=/opt/orion/backend
+ExecStart=/opt/orion/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4 --log-level info --proxy-headers
 ExecReload=/bin/kill -s HUP $MAINPID
 Restart=on-failure
 RestartSec=10s
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=orion-api
+SyslogIdentifier=canonical-api
 LimitNOFILE=65536
 
 [Install]

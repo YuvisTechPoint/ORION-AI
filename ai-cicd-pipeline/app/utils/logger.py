@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.config import settings
+from app.utils.text_analysis import redact_secrets
 
 _STANDARD_ATTRS = frozenset(
     logging.LogRecord("", 0, "", 0, "", (), None).__dict__.keys()
@@ -13,11 +14,14 @@ _STANDARD_ATTRS = frozenset(
 
 class JSONFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
+        message = record.getMessage()
+        if settings.is_production:
+            message = redact_secrets(message)
         payload: dict[str, Any] = {
             "timestamp": datetime.fromtimestamp(record.created, timezone.utc).isoformat(),
             "level": record.levelname,
             "name": record.name,
-            "message": record.getMessage(),
+            "message": message,
         }
         for key, value in record.__dict__.items():
             if key not in _STANDARD_ATTRS and not key.startswith("_"):

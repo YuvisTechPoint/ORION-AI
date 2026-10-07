@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends
 
+from api.auth import optional_pipeline_auth
 from api.routes import get_orchestrator
 from core.config import Settings, get_settings
 from core.gate_fusion import fuse_stage_results
@@ -56,6 +57,7 @@ def intelligence_dashboard(
     background_tasks: BackgroundTasks,
     orchestrator: Orchestrator = Depends(get_orchestrator),
     settings: Settings = Depends(get_settings),
+    _auth: dict = Depends(optional_pipeline_auth),
 ) -> dict[str, Any]:
     runs = orchestrator.list_pipelines(limit=20)
     summary = _summarize_runs(runs)

@@ -47,3 +47,10 @@ def test_github_webhook_rejects_bad_signature(client: TestClient) -> None:
     body = json.dumps(payload).encode()
     res = client.post("/webhook/github", content=body, headers={"X-Hub-Signature-256": "sha256=deadbeef"})
     assert res.status_code == 401
+
+
+def test_github_webhook_rejects_missing_signature(client: TestClient) -> None:
+    payload = {"repository": {"clone_url": "https://github.com/o/r.git"}}
+    body = json.dumps(payload).encode()
+    res = client.post("/webhook/github", content=body)
+    assert res.status_code == 401

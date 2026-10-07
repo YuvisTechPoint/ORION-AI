@@ -19,7 +19,15 @@ This runbook covers deploying all stacks with production hardening enabled.
 python scripts\generate_production_env.py --force
 ```
 
-This writes `.env.production` for all stacks plus `.env.prod.infra` for Docker Postgres/Redis.  
+This writes `.env.production` for all stacks plus `.env.prod.infra` for Docker Postgres/Redis.
+
+**Preflight (all stacks):**
+
+```powershell
+python scripts/production_preflight.py
+```
+
+Validates placeholder secrets, ORION `validate_startup()`, Canonical `check_required_env_vars()`, and DevOps `validate_startup()`.  
 Secrets print once to the console; a non-secret manifest lands in `.local/production_manifest.json`.
 
 **Option B — manual (real cloud deploy):**

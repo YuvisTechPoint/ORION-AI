@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     celery_broker_url: str = Field(default="redis://localhost:6379/0", alias="CELERY_BROKER_URL")
     celery_result_backend: str = Field(default="redis://localhost:6379/1", alias="CELERY_RESULT_BACKEND")
 
-    github_webhook_secret: str = Field(default="your_webhook_secret", alias="GITHUB_WEBHOOK_SECRET")
+    github_webhook_secret: str = Field(default="", alias="GITHUB_WEBHOOK_SECRET")
     deployment_api_key: str = Field(default="devops-approver-key", alias="DEPLOYMENT_API_KEY")
     orion_api_key: str = Field(default="", alias="ORION_API_KEY")
     orion_api_url: str = Field(default="http://127.0.0.1:8001", alias="ORION_API_URL")

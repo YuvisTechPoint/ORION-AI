@@ -1,5 +1,3 @@
-import hashlib
-import hmac
 import json
 import logging
 from uuid import uuid4
@@ -12,20 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import async_session_factory
 from app.models import PipelineRun, PipelineStatus, WebhookDelivery
 from app.orchestrator.dispatch import dispatch_pipeline
+from app.webhook_security import resolve_webhook_secret, verify_github_signature
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _verify_github_signature(body: bytes, signature: str | None, secret: str) -> bool:
-    if not signature or not secret:
-        return False
-    if not signature.startswith("sha256="):
-        return False
-    sig = signature[7:]
-    mac = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(mac, sig)
 
 
 async def _find_delivery(session: AsyncSession, delivery_id: str) -> WebhookDelivery | None:
@@ -49,10 +38,9 @@ async def github_webhook(
     body = await request.body()
     event = x_github_event or "push"
 
-    if settings.github_webhook_secret and not _verify_github_signature(
-        body, x_hub_signature_256, settings.github_webhook_secret
-    ):
-        raise HTTPException(status_code=401, detail="Invalid signature")
+    secret = resolve_webhook_secret(settings)
+    if not verify_github_signature(body, x_hub_signature_256, secret):
+        raise HTTPException(status_code=401, detail="Invalid or missing GitHub signature")
 
     delivery_id = (x_github_delivery or "").strip()
     if delivery_id:

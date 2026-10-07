@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,9 +39,18 @@ app = FastAPI(
     description="Unified control plane BFF for Binary-v2 stacks",
 )
 
+def _hub_cors_origins() -> list[str]:
+    raw = os.getenv(
+        "HUB_CORS_ORIGINS",
+        "http://127.0.0.1:5180,http://localhost:5180,http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:3000,http://localhost:3000",
+    )
+    origins = [part.strip() for part in raw.split(",") if part.strip()]
+    return origins or ["http://127.0.0.1:5180"]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_hub_cors_origins(),
     allow_methods=["GET", "POST", "HEAD", "OPTIONS"],
     allow_headers=["*"],
 )

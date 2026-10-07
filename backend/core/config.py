@@ -2,7 +2,7 @@ import logging
 import os
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     @property
     def use_secure_session_cookies(self) -> bool:
         return self.is_production and not self.production_local_sim
+
+    @model_validator(mode="after")
+    def _production_defaults(self) -> "Settings":
+        if self.is_production and not self.api_require_auth:
+            object.__setattr__(self, "api_require_auth", True)
+        return self
 
 
 def get_settings() -> Settings:

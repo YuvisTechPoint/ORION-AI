@@ -9,9 +9,9 @@
 
 ORION (`ai-cicd-pipeline/`) has the **strongest security posture** of the three stacks: real SAST/SCA tools, non-downgradable scanner severity, secrets/policy/injection gates, webhook HMAC, and secret redaction before LLM calls.
 
-Canonical and Platform stacks rely more on **LLM/heuristic security** with weaker deterministic gates.
+Canonical and DevOps stacks now run **shared bandit + pip-audit** scanners (`shared/security_scanners.py`) with LLM enrichment only — scanner severity is authoritative on DevOps SecurityAgent.
 
-**Top risks:** broken ORION WebSocket handler (availability/ops), canonical frontend calling non-existent multimodal routes, missing correlation/tracing (incident forensics), auth disabled by default in dev configs propagating to prod misconfiguration.
+**Top risks (remaining):** auth disabled by default in dev `.env` files propagating to prod misconfiguration; optional integrations (OPA, OTLP, live chaos/DAST) require explicit production wiring; SQLite `PRODUCTION_LOCAL_SIM` is not a substitute for Postgres/Celery in real production.
 
 ---
 
@@ -21,7 +21,7 @@ Canonical and Platform stacks rely more on **LLM/heuristic security** with weake
 |---------|----------|-------|
 | GitHub webhook HMAC | All stacks | Signature validation before processing |
 | Webhook idempotency ledger | Canonical, ORION | Prevents duplicate pipeline runs |
-| Bandit + pip-audit | ORION SecurityAgent | Real subprocess scanners |
+| Bandit + pip-audit | ORION, Canonical, DevOps | `shared/security_scanners.py` — real subprocess scanners |
 | Security severity gate | ORION | `highest_severity > MAX_SECURITY_SEVERITY` → block |
 | LLM cannot downgrade scanner | ORION SecurityAgent | Documented + enforced |
 | Secret redaction | `text_analysis.redact_secrets` | Before LLM/agent input |

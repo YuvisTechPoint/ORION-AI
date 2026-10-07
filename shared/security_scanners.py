@@ -1,4 +1,4 @@
-"""Deterministic SAST/SCA scanners for the canonical stack (bandit + pip-audit)."""
+"""Deterministic SAST/SCA scanners shared across ORION, Canonical, and DevOps (bandit + pip-audit)."""
 
 from __future__ import annotations
 

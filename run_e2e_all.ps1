@@ -39,7 +39,10 @@ if (-not $SkipAiCicd) {
     [void]$steps.Add("ai-cicd-e2e")
 }
 if (-not $SkipDevops) { [void]$steps.Add("devops") }
-if (-not $SkipPlaywright) { [void]$steps.Add("playwright") }
+if (-not $SkipPlaywright) {
+    [void]$steps.Add("hub")
+    [void]$steps.Add("playwright")
+}
 $total = $steps.Count
 $step = 0
 
@@ -95,6 +98,10 @@ if (-not $SkipDevops) {
 }
 
 if (-not $SkipPlaywright) {
+    $step++
+    Write-Host "`n[$step/$total] Hub federation tests..." -ForegroundColor Yellow
+    Invoke-StepCommand { & $python -m pytest tests/hub/ -q --tb=line }
+
     $step++
     Write-Host "`n[$step/$total] Playwright hub smoke..." -ForegroundColor Yellow
     Push-Location (Join-Path $root "e2e")

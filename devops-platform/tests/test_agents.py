@@ -109,6 +109,50 @@ def test_security_agent_passes_when_clean(db_session: Session, monkeypatch: pyte
     assert out.passed is True
 
 
+def test_security_agent_runs_scanners_on_temp_dir(db_session: Session, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    pid = uuid4()
+    db_session.add(
+        PipelineRun(
+            id=pid,
+            repo_url="https://github.com/o/r",
+            commit_sha="",
+            status=PipelineStatus.DEV,
+            metadata_json={},
+        )
+    )
+    db_session.commit()
+
+    scanner_report = {
+        "issues": [{"scanner": "bandit", "severity": "high", "type": "hardcoded_password", "file_path": "main.py"}],
+        "blocked": True,
+        "highest_severity": "high",
+        "scanners": {"bandit": {"status": "ok"}},
+        "summary": "Scanner blocked",
+    }
+    monkeypatch.setattr(
+        "app.utils.security_scanners.run_security_scanners",
+        lambda _path: scanner_report,
+    )
+
+    agent = SecurityAgent(db_session)
+    monkeypatch.setattr(
+        agent,
+        "_call_llm",
+        lambda *_a, **_k: {"vulnerabilities": [], "overall_risk": "low", "passed": True},
+    )
+
+    out = agent.run(
+        AgentInput(
+            pipeline_id=pid,
+            stage_name="DEV",
+            context={"temp_dir": str(tmp_path), "code_snapshot": {"files": []}},
+        )
+    )
+    assert out.artifacts["security"]["analysis_mode"] == "scanner"
+    assert out.passed is False
+    assert out.artifacts["security"].get("scanners") is not None
+
+
 def test_qa_skips_without_tests_dir(db_session: Session, tmp_path) -> None:
     from app.agents.qa_agent import QAAgent
 

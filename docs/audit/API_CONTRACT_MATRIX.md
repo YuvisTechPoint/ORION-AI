@@ -71,8 +71,8 @@
 |--------|------|--------|
 | POST | `/api/v1/multimodal/analyze` | ✅ implemented |
 | POST | `/api/v1/multimodal/triage` | ✅ implemented |
-| POST | `/api/v1/multimodal/git-logs` | ❌ **frontend calls; backend missing** |
-| POST | `/api/v1/multimodal/payment` | ❌ **frontend calls; backend missing** |
+| POST | `/api/v1/multimodal/git-logs` | ✅ implemented |
+| POST | `/api/v1/multimodal/payment` | ✅ implemented |
 
 ### Intelligence
 

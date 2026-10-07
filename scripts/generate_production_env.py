@@ -182,8 +182,13 @@ UNIFIED_RISK_GATE_ENABLED=true
 UNIFIED_RISK_ENABLED=true
 AUTOPILOT_SIMULATE_ONLY=true
 PROGRESSIVE_DELIVERY_ENABLED=true
+RATE_LIMIT_BACKEND=auto
 RATE_LIMIT_REQUESTS=120
 RATE_LIMIT_WINDOW_SECONDS=60
+POLICY_ENGINE=hybrid
+PERFORMANCE_BASELINE_PERSIST=true
+PERFORMANCE_BASELINE_GATE=false
+OTEL_EXPORT_ENABLED=false
 """
     if _write(orion_path, orion_content, args.force):
         written.append(str(orion_path.relative_to(ROOT)))
@@ -229,6 +234,10 @@ ANTHROPIC_API_KEY={anthropic_key}
 SLACK_WEBHOOK_URL={slack_url}
 QA_MODE=real
 LLM_MODE=auto
+SECURITY_SCANNERS_ENABLED=true
+RATE_LIMIT_BACKEND=auto
+RATE_LIMIT_REQUESTS=60
+RATE_LIMIT_WINDOW_SECONDS=60
 """
     if _write(canonical_path, canonical_content, args.force):
         written.append(str(canonical_path.relative_to(ROOT)))
@@ -266,6 +275,10 @@ CANONICAL_UI_URL=http://{host}:5173
 HUB_URL={hub_url}
 SLACK_WEBHOOK_URL={slack_url}
 DEPLOY_MODE=auto
+SECURITY_SCANNERS_ENABLED=true
+RATE_LIMIT_BACKEND=auto
+RATE_LIMIT_REQUESTS=60
+RATE_LIMIT_WINDOW_SECONDS=60
 """
     if _write(devops_path, devops_content, args.force):
         written.append(str(devops_path.relative_to(ROOT)))

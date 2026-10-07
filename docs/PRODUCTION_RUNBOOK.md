@@ -48,6 +48,13 @@ docker compose --env-file .env.prod.infra -f docker-compose.prod.yml up -d
 
 Postgres creates databases: `orion`, `canonical`, `devops_platform` (see `docker/postgres-init/`).
 
+**ORION schema migrations** (required after upgrade — includes `performance_baselines` table):
+
+```powershell
+cd ai-cicd-pipeline
+..\.venv\Scripts\alembic upgrade head
+```
+
 ## 2b. TLS (optional, local nginx)
 
 ```powershell

@@ -35,6 +35,27 @@ def test_policy_passes_clean_run() -> None:
     assert report["passed"] is True
 
 
+def test_policy_hybrid_uses_opa_when_configured(monkeypatch) -> None:
+    from unittest.mock import patch
+
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "policy_engine", "hybrid")
+    monkeypatch.setattr(settings, "opa_url", "http://127.0.0.1:8181")
+    opa_result = {
+        "passed": False,
+        "violations": [{"policy": "opa", "rule": "deny_unsigned", "detail": "image not signed"}],
+        "policies_evaluated": ["orion/pipeline"],
+        "violation_count": 1,
+        "engine": "opa",
+        "summary": "OPA blocked",
+    }
+    with patch("app.utils.opa_adapter.evaluate_policies_opa", return_value=opa_result):
+        report = evaluate_policies(_sample_artifacts(), unsigned_image=True)
+    assert report["engine"] == "opa"
+    assert report["passed"] is False
+
+
 def test_compliance_pack_scoring() -> None:
     arts = _sample_artifacts()
     arts["tenant_rbac_context"] = resolve_tenant_context("acme/payments")

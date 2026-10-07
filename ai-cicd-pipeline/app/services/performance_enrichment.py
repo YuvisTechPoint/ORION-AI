@@ -8,8 +8,10 @@ from typing import Any
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.pipeline_artifact import PipelineArtifact
 from app.models.pipeline_run import PipelineRun
+from app.services.performance_baseline_store import get_baseline, upsert_baseline
 from app.utils.artifact_summaries import summarize_artifact
 from app.utils.performance_intelligence import build_performance_intelligence_report, resolve_stress_profile
 
@@ -51,8 +53,34 @@ async def persist_performance_intelligence(
             historical.append(art.content)
 
     profile = resolve_stress_profile(stress_report.get("stress_profile"))
-    report = build_performance_intelligence_report(stress_report, historical_stress=historical, profile=profile)
+    stored = None
+    if settings.performance_baseline_persist:
+        stored = await get_baseline(
+            db,
+            repo_full_name=run.repo_full_name,
+            profile=profile.get("name", "standard"),
+            environment=settings.deploy_environment,
+        )
+
+    report = build_performance_intelligence_report(
+        stress_report,
+        historical_stress=historical,
+        stored_baseline=stored,
+        profile=profile,
+    )
     report["summary"] = summarize_artifact("performance_intelligence", report)
     await _save(db, run.id, "performance_intelligence", report)
+
+    if settings.performance_baseline_persist and not stress_report.get("skipped"):
+        baseline_update = await upsert_baseline(
+            db,
+            repo_full_name=run.repo_full_name,
+            stress_report=stress_report,
+            profile=profile.get("name", "standard"),
+            environment=settings.deploy_environment,
+            run_id=run.id,
+        )
+        report["baseline_persist"] = baseline_update
+
     await db.commit()
     return report

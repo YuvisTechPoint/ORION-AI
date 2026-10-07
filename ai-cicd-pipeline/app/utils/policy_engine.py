@@ -43,6 +43,17 @@ def evaluate_policies(
     unsigned_image: bool = False,
     strict_requirements: bool = False,
 ) -> dict[str, Any]:
+    from app.config import settings
+
+    engine_mode = (settings.policy_engine or "heuristic").strip().lower()
+    if engine_mode in {"opa", "hybrid"}:
+        from app.utils.opa_adapter import evaluate_policies_opa
+
+        opa_result = evaluate_policies_opa(artifacts, unsigned_image=unsigned_image)
+        if opa_result is not None:
+            if engine_mode == "opa" or opa_result.get("passed") is False:
+                return opa_result
+
     policies = policies or DEFAULT_POLICIES
     security = artifacts.get("security_scan") or {}
     secrets = artifacts.get("secrets_scan") or {}

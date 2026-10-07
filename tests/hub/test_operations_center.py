@@ -130,3 +130,30 @@ async def test_build_operations_center_counts():
     assert report.deployed_recent == 1
     assert report.slo_summary["avg_pass_rate"] == 0.75
     assert any("orion" in b for b in report.top_blockers)
+    assert report.policy_panel.get("stacks")
+    assert report.security_panel.get("stacks") is not None
+    assert "performance" in report.performance_panel or report.performance_panel.get("stacks") is not None
+
+
+def test_ops_panels_from_capabilities():
+    from hub.federation.operations_center import _ops_panels
+    from hub.federation.models import StackIntelligenceSnapshot
+
+    snaps = [
+        StackIntelligenceSnapshot(
+            stack="orion",
+            title="ORION",
+            available=True,
+            capabilities={
+                "policy_engine": "hybrid",
+                "opa_adapter": True,
+                "bandit_scanner": True,
+                "pip_audit_scanner": True,
+                "performance_baseline_persist": True,
+            },
+        )
+    ]
+    panels = _ops_panels(snaps, {"highest_risk_repo": "acme/api", "avg_risk_score": 42})
+    assert panels["policy"]["opa_enabled"] is True
+    assert panels["security"]["real_sast"] is True
+    assert panels["performance"]["baseline_persist"] is True

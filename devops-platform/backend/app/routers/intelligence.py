@@ -86,5 +86,12 @@ async def dashboard(
             "github_statuses": bool(settings.github_token),
             "slack_alerts": bool(settings.slack_webhook_url),
             "slo_slack_alerts": bool(settings.slack_webhook_url) and settings.slo_alert_slack_enabled,
+            "policy_engine": "heuristic",
+            "bandit_scanner": settings.security_scanners_enabled,
+            "pip_audit_scanner": settings.security_scanners_enabled,
+            "secrets_guardian": False,
+            "performance_baseline_persist": False,
+            "performance_baseline_gate": False,
+            "otel_export": False,
         },
     }

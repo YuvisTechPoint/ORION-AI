@@ -26,6 +26,9 @@ async function renderOperationsCenter() {
     const blockers = data.top_blockers || [];
     const alerts = data.alerts || [];
     const grid = data.service_grid || [];
+    const policy = data.policy_panel || {};
+    const security = data.security_panel || {};
+    const performance = data.performance_panel || {};
 
     panel.innerHTML = `
       <div class="ops-kpis">
@@ -47,6 +50,23 @@ async function renderOperationsCenter() {
           </div>`
           )
           .join("")}
+      </div>
+      <div class="ops-columns ops-columns-3">
+        <div class="ops-col">
+          <h3>Policy</h3>
+          <p class="cp-meta">engine ${esc(policy.policy_engine || "heuristic")} · OPA ${policy.opa_enabled ? "on" : "off"}</p>
+          ${(policy.stacks || []).map((s) => `<div class="cp-meta">[${esc(s.stack)}] ${esc(s.policy_engine)}${s.opa ? " + OPA" : ""}</div>`).join("") || `<p class="cp-empty">No policy telemetry.</p>`}
+        </div>
+        <div class="ops-col">
+          <h3>Security scanners</h3>
+          <p class="cp-meta">SAST ${security.real_sast ? "bandit" : "heuristic"} · SCA ${security.real_sca ? "pip-audit" : "heuristic"}</p>
+          ${(security.stacks || []).map((s) => `<div class="cp-meta">[${esc(s.stack)}] bandit=${s.bandit ? "✓" : "—"} pip-audit=${s.pip_audit ? "✓" : "—"}</div>`).join("") || `<p class="cp-empty">No scanner telemetry.</p>`}
+        </div>
+        <div class="ops-col">
+          <h3>Performance</h3>
+          <p class="cp-meta">baseline persist ${performance.baseline_persist ? "on" : "off"} · gate ${performance.baseline_gate ? "on" : "off"}</p>
+          <p class="cp-meta">fleet risk ${esc(performance.fleet_highest_risk || "—")}${performance.fleet_avg_risk != null ? ` · avg ${performance.fleet_avg_risk}` : ""}</p>
+        </div>
       </div>
       <div class="ops-columns">
         <div class="ops-col">

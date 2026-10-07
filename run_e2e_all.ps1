@@ -102,7 +102,7 @@ if (-not $SkipPlaywright) {
         Invoke-StepCommand { npm install --silent }
     }
     Invoke-StepCommand { npx playwright install chromium }
-    Invoke-StepCommand { npx playwright test tests/hub.spec.ts tests/stacks.spec.ts tests/navigation.spec.ts }
+    Invoke-StepCommand { npx playwright test tests/hub.spec.ts tests/stacks.spec.ts tests/navigation.spec.ts tests/operations.spec.ts }
     Pop-Location
 }
 

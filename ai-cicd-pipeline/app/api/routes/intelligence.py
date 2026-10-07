@@ -424,6 +424,13 @@ async def intelligence_dashboard(
             "idp_portal": True,
             "scoped_policies": True,
             "ai_autonomy_policies": True,
+            "policy_engine": settings.policy_engine,
+            "opa_adapter": bool((settings.opa_url or "").strip()),
+            "bandit_scanner": True,
+            "pip_audit_scanner": True,
+            "performance_baseline_persist": settings.performance_baseline_persist,
+            "performance_baseline_gate": settings.performance_baseline_gate_enabled,
+            "otel_export": settings.otel_export_enabled,
         },
     }
 

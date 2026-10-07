@@ -61,6 +61,57 @@ def _merge_alerts(snapshots: list[StackIntelligenceSnapshot], limit: int = 12) -
     return alerts[:limit]
 
 
+def _ops_panels(snapshots: list[StackIntelligenceSnapshot], fleet: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    policy: dict[str, Any] = {"stacks": [], "opa_enabled": False, "policy_engine": "heuristic"}
+    security: dict[str, Any] = {"stacks": [], "real_sast": False, "real_sca": False}
+    performance: dict[str, Any] = {"stacks": [], "baseline_persist": False, "baseline_gate": False}
+
+    for snap in snapshots:
+        caps = snap.capabilities or {}
+        policy["stacks"].append(
+            {
+                "stack": snap.stack,
+                "policy_engine": caps.get("policy_engine", "heuristic"),
+                "opa": bool(caps.get("opa_adapter")),
+                "compliance_packs": bool(caps.get("compliance_packs")),
+            }
+        )
+        if caps.get("opa_adapter"):
+            policy["opa_enabled"] = True
+        if caps.get("policy_engine"):
+            policy["policy_engine"] = caps.get("policy_engine")
+
+        security["stacks"].append(
+            {
+                "stack": snap.stack,
+                "bandit": bool(caps.get("bandit_scanner")),
+                "pip_audit": bool(caps.get("pip_audit_scanner")),
+                "secrets_guardian": bool(caps.get("secrets_guardian")),
+            }
+        )
+        if caps.get("bandit_scanner"):
+            security["real_sast"] = True
+        if caps.get("pip_audit_scanner"):
+            security["real_sca"] = True
+
+        performance["stacks"].append(
+            {
+                "stack": snap.stack,
+                "baseline_persist": bool(caps.get("performance_baseline_persist")),
+                "baseline_gate": bool(caps.get("performance_baseline_gate")),
+                "otel_export": bool(caps.get("otel_export")),
+            }
+        )
+        if caps.get("performance_baseline_persist"):
+            performance["baseline_persist"] = True
+        if caps.get("performance_baseline_gate"):
+            performance["baseline_gate"] = True
+
+    performance["fleet_highest_risk"] = fleet.get("highest_risk_repo")
+    performance["fleet_avg_risk"] = fleet.get("avg_risk_score")
+    return {"policy": policy, "security": security, "performance": performance}
+
+
 def _service_grid(
     health_stacks: list[Any],
     snapshots: list[StackIntelligenceSnapshot],
@@ -111,6 +162,7 @@ async def build_operations_center(*, correlation_id: str | None = None) -> Opera
     alerts = _merge_alerts(snapshots)
     service_grid = _service_grid(health.stacks, snapshots)
 
+    panels = _ops_panels(snapshots, fleet)
     summary = (
         f"Operations Center: {active} active pipeline(s), {blocked} blocked, "
         f"{len(open_incidents)} open incident(s), "
@@ -131,5 +183,8 @@ async def build_operations_center(*, correlation_id: str | None = None) -> Opera
         fleet=fleet,
         stack_intelligence=snapshots,
         service_grid=service_grid,
+        policy_panel=panels["policy"],
+        security_panel=panels["security"],
+        performance_panel=panels["performance"],
         summary=summary,
     )

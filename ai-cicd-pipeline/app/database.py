@@ -49,6 +49,7 @@ async def init_db() -> None:
     from app.models import pipeline_artifact  # noqa: F401
     from app.models import pipeline_run  # noqa: F401
     from app.models import webhook_delivery  # noqa: F401
+    from app.models import performance_baseline  # noqa: F401
 
     async with async_engine.begin() as conn:
         if conn.engine.dialect.name == "postgresql":

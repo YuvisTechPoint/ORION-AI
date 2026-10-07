@@ -84,5 +84,12 @@ def intelligence_dashboard(
             "hybrid_retriever": settings.retriever_backend in {"hybrid", "files", "chunk"},
             "correlated_monitoring": True,
             "slo_slack_alerts": bool(settings.slack_webhook_url) and settings.slo_alert_slack_enabled,
+            "policy_engine": "heuristic",
+            "bandit_scanner": settings.security_scanners_enabled,
+            "pip_audit_scanner": settings.security_scanners_enabled,
+            "secrets_guardian": False,
+            "performance_baseline_persist": False,
+            "performance_baseline_gate": False,
+            "otel_export": False,
         },
     }

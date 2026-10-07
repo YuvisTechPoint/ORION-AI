@@ -34,6 +34,7 @@ from app.database import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models.pipeline_artifact import PipelineArtifact  # noqa: E402,F401
 from app.models.pipeline_run import PipelineRun  # noqa: E402
+from app.models.performance_baseline import PerformanceBaseline  # noqa: E402, F401
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SESSION_FACTORY_TARGETS = (

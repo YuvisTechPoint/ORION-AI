@@ -52,7 +52,7 @@ def test_run_security_scanners_merges_bandit_and_pip_audit(tmp_path) -> None:
         ]
     }
 
-    with patch("core.security_scanners.subprocess.run") as run_cmd:
+    with patch("shared.security_scanners.subprocess.run") as run_cmd:
         run_cmd.side_effect = [
             type("P", (), {"stdout": json.dumps(bandit_payload), "stderr": "", "returncode": 0})(),
             type("P", (), {"stdout": json.dumps(pip_payload), "stderr": "", "returncode": 0})(),

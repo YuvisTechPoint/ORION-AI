@@ -17,7 +17,7 @@
 | Security gap report | **Done** | `docs/audit/SECURITY_GAP_REPORT.md` |
 | Technical debt register | **Done** | `docs/audit/TECHNICAL_DEBT.md` |
 | Test baseline | **Done** | 324 tests pass (O:242, C:54, P:28) |
-| Static analysis CI | **Partial** | pytest only; no repo-wide ruff/bandit gate |
+| Static analysis CI | **Done** | `.github/workflows/ci.yml` — canonical/ORION/devops/hub pytest matrix + Playwright hub smoke |
 | Stack verification scripts | **Done** | `run_all_stacks.ps1`, `run_e2e_all.ps1` exist |
 | Doc vs code reconciliation | **Done** | See FEATURE_MATRIX §O |
 

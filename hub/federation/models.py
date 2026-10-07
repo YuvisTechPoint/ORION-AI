@@ -126,4 +126,7 @@ class OperationsCenterReport(BaseModel):
     fleet: dict[str, Any] = Field(default_factory=dict)
     stack_intelligence: list[StackIntelligenceSnapshot] = Field(default_factory=list)
     service_grid: list[dict[str, Any]] = Field(default_factory=list)
+    policy_panel: dict[str, Any] = Field(default_factory=dict)
+    security_panel: dict[str, Any] = Field(default_factory=dict)
+    performance_panel: dict[str, Any] = Field(default_factory=dict)
     summary: str = ""

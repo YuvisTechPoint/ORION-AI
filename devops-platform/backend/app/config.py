@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     rate_limit_requests: int = Field(default=60, alias="RATE_LIMIT_REQUESTS")
     rate_limit_window_seconds: int = Field(default=60, alias="RATE_LIMIT_WINDOW_SECONDS")
     rate_limit_backend: str = Field(default="auto", alias="RATE_LIMIT_BACKEND")
+    security_scanners_enabled: bool = Field(default=True, alias="SECURITY_SCANNERS_ENABLED")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     production_local_sim: bool = Field(default=False, alias="PRODUCTION_LOCAL_SIM")
     devops_ui_url: str = Field(default="http://127.0.0.1:3000", alias="DEVOPS_UI_URL")

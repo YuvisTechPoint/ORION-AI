@@ -69,6 +69,7 @@ def compare_to_baseline(
     current: dict[str, Any],
     historical: list[dict[str, Any]],
     *,
+    stored_baseline: dict[str, Any] | None = None,
     max_p95_regression_pct: float | None = None,
     max_p95_regression_ms: float | None = None,
     max_error_rate_delta: float | None = None,
@@ -88,9 +89,14 @@ def compare_to_baseline(
     current_err = float(current.get("error_rate_pct") if current.get("error_rate_pct") is not None else (_metric_values([current], "error_rate_pct")[0] if _metric_values([current], "error_rate_pct") else 0))
     hist_p95 = _metric_values(historical, "p95_ms")
     hist_err = _metric_values(historical, "error_rate_pct")
+    if stored_baseline and stored_baseline.get("p95_ms") is not None:
+        hist_p95.append(float(stored_baseline["p95_ms"]))
+    if stored_baseline and stored_baseline.get("error_rate_pct") is not None:
+        hist_err.append(float(stored_baseline["error_rate_pct"]))
 
     baseline_p95 = round(statistics.median(hist_p95), 2) if hist_p95 else None
     baseline_err = round(statistics.median(hist_err), 3) if hist_err else None
+    baseline_source = "persistent_store" if stored_baseline else "historical_stress_reports"
 
     p95_delta_ms = round(current_p95 - baseline_p95, 2) if baseline_p95 is not None else None
     p95_delta_pct = (
@@ -112,6 +118,7 @@ def compare_to_baseline(
 
     return {
         "baseline_sample_size": len(hist_p95),
+        "baseline_source": baseline_source,
         "baseline_p95_ms": baseline_p95,
         "baseline_error_rate_pct": baseline_err,
         "current_p95_ms": current_p95,
@@ -169,10 +176,11 @@ def build_performance_intelligence_report(
     stress_report: dict[str, Any],
     *,
     historical_stress: list[dict[str, Any]] | None = None,
+    stored_baseline: dict[str, Any] | None = None,
     profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     hist = [h for h in (historical_stress or []) if isinstance(h, dict)]
-    baseline = compare_to_baseline(stress_report, hist)
+    baseline = compare_to_baseline(stress_report, hist, stored_baseline=stored_baseline)
     prof = profile or resolve_stress_profile(stress_report.get("stress_profile"))
     recommendations = recommend_profiles(stress_report, baseline)
     report: dict[str, Any] = {

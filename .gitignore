@@ -8,6 +8,10 @@
 venv/
 env/
 
+# Local test databases
+backend/test_devops_platform.db
+backend/*.db-journal
+
 # Python
 __pycache__/
 *.py[cod]

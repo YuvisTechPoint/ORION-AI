@@ -208,6 +208,8 @@ app.add_middleware(
     RateLimitMiddleware,
     max_requests=settings.rate_limit_requests,
     window_seconds=settings.rate_limit_window_seconds,
+    redis_url=settings.redis_url,
+    backend=settings.rate_limit_backend,
 )
 
 app.include_router(auth.router, prefix="/api/v1")

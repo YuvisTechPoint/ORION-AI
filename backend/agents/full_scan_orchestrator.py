@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
 from agents.base import BaseAgent
@@ -8,27 +9,44 @@ from agents.code_analysis import CodeAnalysisAgent
 from agents.security import SecurityAgent
 from core.logging_config import get_logger
 from core.rule_engine import run_quality_rules, run_security_rules
+from core.security_scanners import run_security_scanners
 from services.qa_runner import QARunner
 
 
 class FullScanOrchestrator(BaseAgent):
     """Runs code, security, and QA checks sequentially without early exit."""
 
-    def __init__(self, llm_client: Any, qa_timeout_seconds: int = 30, qa_mode: str = "real") -> None:
+    def __init__(
+        self,
+        llm_client: Any,
+        qa_timeout_seconds: int = 30,
+        qa_mode: str = "real",
+        security_scanners_enabled: bool = True,
+    ) -> None:
         super().__init__(llm_client=llm_client, name="full_scan_orchestrator")
         self.logger = get_logger("full_scan_orchestrator")
         self.code_agent = CodeAnalysisAgent(llm_client)
         self.security_agent = SecurityAgent(llm_client)
         self.qa_runner = QARunner(timeout_seconds=qa_timeout_seconds)
         self.qa_mode = qa_mode
+        self.security_scanners_enabled = security_scanners_enabled
 
     def build_prompt(self, payload: dict[str, Any]) -> str:
         return str(payload)
 
-    async def execute(self, repo_path: str, diff_text: str, pipeline_run_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        del repo_path, diff_text, pipeline_run_id
+    async def execute(
+        self,
+        repo_path: str,
+        diff_text: str,
+        pipeline_run_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        del diff_text, pipeline_run_id
 
-        # Execute in deterministic order so each model runs one-after-another.
+        scanner_report: dict[str, Any] = {}
+        if self.security_scanners_enabled and repo_path and Path(repo_path).is_dir():
+            scanner_report = await asyncio.to_thread(run_security_scanners, repo_path)
+
         try:
             code_result = await asyncio.to_thread(self.code_agent.run, payload)
         except Exception as exc:  # noqa: BLE001
@@ -67,8 +85,16 @@ class FullScanOrchestrator(BaseAgent):
             )
             normalized_security.setdefault("issues", [])
             normalized_security["issues"].extend(rule_issues)
+            if scanner_report:
+                scanner_issues = scanner_report.get("issues") or []
+                normalized_security["issues"].extend(scanner_issues)
+                normalized_security["scanners"] = scanner_report.get("scanners")
+                normalized_security["highest_severity"] = scanner_report.get("highest_severity")
+                normalized_security["analysis_mode"] = scanner_report.get("analysis_mode", "scanner")
+                if scanner_report.get("summary"):
+                    normalized_security["summary"] = scanner_report["summary"]
             normalized_security["blocked"] = any(
-                isinstance(issue, dict) and issue.get("severity") == "high"
+                isinstance(issue, dict) and issue.get("severity") in {"high", "critical"}
                 for issue in normalized_security.get("issues", [])
             )
 

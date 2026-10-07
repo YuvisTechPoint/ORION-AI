@@ -10,6 +10,9 @@ from app.utils.correlation import CORRELATION_HEADER, TRACE_HEADER, resolve_corr
 
 
 def test_resolve_correlation_id_generates_when_missing():
+    from app.utils.correlation import set_correlation_id
+
+    set_correlation_id(None)
     cid = resolve_correlation_id(None)
     assert len(cid) == 32
 

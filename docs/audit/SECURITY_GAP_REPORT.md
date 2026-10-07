@@ -27,7 +27,8 @@ Canonical and Platform stacks rely more on **LLM/heuristic security** with weake
 | Secret redaction | `text_analysis.redact_secrets` | Before LLM/agent input |
 | Prompt injection gate | ORION Phase 5 | Can block at ingest |
 | Secrets scan gate | ORION Phase 1 | `critical_count > 0` → block |
-| Rate limiting | ORION `RateLimitMiddleware` | HTTP abuse mitigation |
+| Rate limiting | All stacks `RateLimitMiddleware` | Memory or Redis (`RATE_LIMIT_BACKEND=auto`) |
+| Canonical SAST/SCA | `backend/core/security_scanners.py` | bandit + pip-audit on repo snapshot |
 | Branch/URL validation | ORION pipeline trigger | Injection hardening on clone URLs |
 | Approval hard rules | ORION ApprovalAgent | Code/security/QA/stress fail → reject |
 | Policy engine fail-closed option | ORION Phase 4 | When `POLICY_ENFORCEMENT_ENABLED` |
@@ -82,16 +83,15 @@ Canonical and Platform stacks rely more on **LLM/heuristic security** with weake
 **Issue:** Cosign-like reports generated without cryptographic verification unless `REQUIRE_SIGNED_BUILDS` strict path.  
 **Impact:** Policy may pass unsigned images in default config (`POLICY_STRICT_REQUIREMENTS=false`).
 
-### SEC-H4: No correlation_id / trace propagation — **RESOLVED (HTTP layer)**
+### SEC-H4: No correlation_id / trace propagation — **RESOLVED**
 
-**Files:** `*/middleware/correlation.py`, `pipeline_run.correlation_id`  
-**Remaining:** Propagate correlation_id into Celery worker logs (medium backlog).
+**Files:** `*/middleware/correlation.py`, `pipeline_run.correlation_id`, `app/tasks/pipeline_tasks.py`  
+**Fix:** Celery workers load `correlation_id`/`trace_id` from `pipeline_runs` and attach to JSON logs.
 
-### SEC-H5: Canonical security agent is LLM-primary
+### SEC-H5: Canonical security agent is LLM-primary — **RESOLVED**
 
-**File:** `backend/agents/security.py`  
-**Issue:** No bandit/pip-audit; regex rule engine only supplements LLM.  
-**Impact:** Weaker deterministic security gate vs ORION.
+**Files:** `backend/core/security_scanners.py`, `backend/agents/full_scan_orchestrator.py`  
+**Fix:** bandit + pip-audit run on materialized repo snapshot; scanner findings merge into security gate (LLM cannot downgrade scanner severity).
 
 ### SEC-H6: Local clone paths in ORION trigger
 

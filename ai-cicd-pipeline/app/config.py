@@ -261,6 +261,7 @@ class Settings(BaseSettings):
     auth_api_keys_json: str = Field(default="{}", alias="AUTH_API_KEYS_JSON")
     rate_limit_requests: int = Field(default=60, alias="RATE_LIMIT_REQUESTS")
     rate_limit_window_seconds: int = Field(default=60, alias="RATE_LIMIT_WINDOW_SECONDS")
+    rate_limit_backend: str = Field(default="auto", alias="RATE_LIMIT_BACKEND")
     sql_echo: bool = Field(default=False)
     journald_enabled: bool = Field(default=True)
     model_device_mode: str = Field(default="cpu")

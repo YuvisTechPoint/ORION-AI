@@ -1,5 +1,6 @@
 import logging
 import random
+import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -55,6 +56,7 @@ class Orchestrator:
             llm_client,
             qa_timeout_seconds=settings.qa_timeout_seconds,
             qa_mode=settings.qa_mode,
+            security_scanners_enabled=settings.security_scanners_enabled,
         )
 
         self.code_agent = CodeAnalysisAgent(llm_client)
@@ -115,6 +117,7 @@ class Orchestrator:
         if callable(index_files):
             index_files(request.repo_files)
         self.full_scan_orchestrator.qa_mode = self.settings.qa_mode
+        self.full_scan_orchestrator.security_scanners_enabled = self.settings.security_scanners_enabled
 
         state.artifacts["multimodal"] = {
             "inputs": [item.model_dump() for item in (request.multimodal_inputs or [])],
@@ -139,12 +142,19 @@ class Orchestrator:
             self._record(state, "dev", "Resuming from full-scan checkpoint")
             await self._publish_pipeline_event(state, "Resuming from full-scan checkpoint")
         else:
-            combined_issues = await self.full_scan_orchestrator.execute(
-                repo_path="",
-                diff_text=request.diff or "",
-                pipeline_run_id=state.pipeline_id,
-                payload=agent_payload,
-            )
+            scan_repo_path = ""
+            if request.repo_files or request.code:
+                scan_repo_path = self._materialize_repo_snapshot(request)
+            try:
+                combined_issues = await self.full_scan_orchestrator.execute(
+                    repo_path=scan_repo_path,
+                    diff_text=request.diff or "",
+                    pipeline_run_id=state.pipeline_id,
+                    payload=agent_payload,
+                )
+            finally:
+                if scan_repo_path:
+                    shutil.rmtree(scan_repo_path, ignore_errors=True)
             combined_issues = self._inject_multimodal_findings(combined_issues, request.multimodal_results or [])
             state.artifacts["full_scan_combined"] = combined_issues
             self._record(state, "dev", "Full scan completed")

@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     orion_api_url: str = Field(default="http://127.0.0.1:8001", alias="ORION_API_URL")
     devops_api_url: str = Field(default="http://127.0.0.1:8002", alias="DEVOPS_API_URL")
     devops_ui_url: str = Field(default="http://127.0.0.1:3000", alias="DEVOPS_UI_URL")
+    rate_limit_requests: int = Field(default=60, alias="RATE_LIMIT_REQUESTS")
+    rate_limit_window_seconds: int = Field(default=60, alias="RATE_LIMIT_WINDOW_SECONDS")
+    rate_limit_backend: str = Field(default="auto", alias="RATE_LIMIT_BACKEND")
+    security_scanners_enabled: bool = Field(default=True, alias="SECURITY_SCANNERS_ENABLED")
 
     @property
     def is_production(self) -> bool:

@@ -1,24 +1,49 @@
-"""Rate limiting for devops-platform sensitive routes."""
+"""Rate limiting for devops-platform sensitive routes (memory or Redis-backed)."""
 
 from __future__ import annotations
 
+import sys
 import time
 from collections import defaultdict, deque
+from pathlib import Path
 from typing import Any
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+_ROOT = Path(__file__).resolve().parents[4]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+from shared.rate_limit_redis import redis_rate_limit_allow, redis_rate_limit_available
+
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     PROTECTED_PREFIXES = ("/webhook/", "/api/pipeline/trigger", "/api/multimodal/")
 
-    def __init__(self, app: Any, *, max_requests: int = 60, window_seconds: int = 60) -> None:
+    def __init__(
+        self,
+        app: Any,
+        *,
+        max_requests: int = 60,
+        window_seconds: int = 60,
+        redis_url: str | None = None,
+        backend: str = "auto",
+    ) -> None:
         super().__init__(app)
         self.max_requests = max_requests
         self.window_seconds = window_seconds
+        self.redis_url = (redis_url or "").strip()
+        self.backend = (backend or "auto").strip().lower()
         self._hits: dict[str, deque[float]] = defaultdict(deque)
+
+    def _use_redis(self) -> bool:
+        if self.backend == "memory":
+            return False
+        if self.backend == "redis":
+            return redis_rate_limit_available(self.redis_url)
+        return redis_rate_limit_available(self.redis_url)
 
     def _client_key(self, request: Request) -> str:
         forwarded = request.headers.get("x-forwarded-for")
@@ -28,20 +53,37 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return request.client.host
         return "unknown"
 
+    def _allowed_memory(self, key: str) -> bool:
+        now = time.monotonic()
+        window = self._hits[key]
+        cutoff = now - self.window_seconds
+        while window and window[0] < cutoff:
+            window.popleft()
+        if len(window) >= self.max_requests:
+            return False
+        window.append(now)
+        return True
+
+    def _allowed(self, key: str) -> bool:
+        if self._use_redis():
+            verdict = redis_rate_limit_allow(
+                self.redis_url,
+                key,
+                max_requests=self.max_requests,
+                window_seconds=self.window_seconds,
+                namespace="devops:rate",
+            )
+            if verdict is not None:
+                return verdict
+        return self._allowed_memory(key)
+
     async def dispatch(self, request: Request, call_next: Any) -> Any:
         path = request.url.path
         if request.method == "POST" and any(path.startswith(p) for p in self.PROTECTED_PREFIXES):
-            now = time.monotonic()
-            key = self._client_key(request)
-            window = self._hits[key]
-            cutoff = now - self.window_seconds
-            while window and window[0] < cutoff:
-                window.popleft()
-            if len(window) >= self.max_requests:
+            if not self._allowed(self._client_key(request)):
                 return JSONResponse(
                     status_code=429,
                     content={"detail": "Rate limit exceeded"},
                     headers={"Retry-After": str(self.window_seconds)},
                 )
-            window.append(now)
         return await call_next(request)

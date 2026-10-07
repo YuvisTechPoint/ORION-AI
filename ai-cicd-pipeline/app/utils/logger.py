@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.config import settings
+from app.utils.correlation import get_correlation_id, get_trace_id
 from app.utils.text_analysis import redact_secrets
 
 _STANDARD_ATTRS = frozenset(
@@ -23,6 +24,12 @@ class JSONFormatter(logging.Formatter):
             "name": record.name,
             "message": message,
         }
+        correlation_id = get_correlation_id()
+        trace_id = get_trace_id()
+        if correlation_id:
+            payload["correlation_id"] = correlation_id
+        if trace_id:
+            payload["trace_id"] = trace_id
         for key, value in record.__dict__.items():
             if key not in _STANDARD_ATTRS and not key.startswith("_"):
                 try:

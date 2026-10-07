@@ -49,7 +49,9 @@ def create_app() -> FastAPI:
     app.add_middleware(
         RateLimitMiddleware,
         max_requests=settings.rate_limit_requests,
-        window_seconds=60,
+        window_seconds=settings.rate_limit_window_seconds,
+        redis_url=settings.redis_url,
+        backend=settings.rate_limit_backend,
     )
     app.add_middleware(
         CORSMiddleware,

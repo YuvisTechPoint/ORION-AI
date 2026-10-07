@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     deploy_mode: str = Field(default="auto", alias="DEPLOY_MODE")
     pipeline_executor: str = Field(default="auto", alias="PIPELINE_EXECUTOR")
     rate_limit_requests: int = Field(default=60, alias="RATE_LIMIT_REQUESTS")
+    rate_limit_window_seconds: int = Field(default=60, alias="RATE_LIMIT_WINDOW_SECONDS")
+    rate_limit_backend: str = Field(default="auto", alias="RATE_LIMIT_BACKEND")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     production_local_sim: bool = Field(default=False, alias="PRODUCTION_LOCAL_SIM")
     devops_ui_url: str = Field(default="http://127.0.0.1:3000", alias="DEVOPS_UI_URL")

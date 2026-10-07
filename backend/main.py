@@ -54,7 +54,13 @@ def create_app() -> FastAPI:
 
     app.add_middleware(CorrelationMiddleware)
     app.add_middleware(RequestMetricsMiddleware)
-    app.add_middleware(RateLimitMiddleware, max_requests=60, window_seconds=60)
+    app.add_middleware(
+        RateLimitMiddleware,
+        max_requests=settings.rate_limit_requests,
+        window_seconds=settings.rate_limit_window_seconds,
+        redis_url=settings.redis_url,
+        backend=settings.rate_limit_backend,
+    )
     app.include_router(router)
     app.include_router(auth_routes.router, prefix="/api/v1")
     app.include_router(multimodal_router, prefix="/api/v1/multimodal", tags=["multimodal"])

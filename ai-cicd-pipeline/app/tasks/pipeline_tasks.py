@@ -62,9 +62,31 @@ def _run_async(factory: Callable[[], Awaitable[Any]]) -> Any:
         loop.close()
 
 
+def _load_correlation_context(pipeline_run_id: str) -> str | None:
+    from app.models.pipeline_run import PipelineRun
+    from app.utils.correlation import set_correlation_id, set_trace_id
+
+    engine = create_engine(settings.sync_database_url, pool_pre_ping=True)
+    try:
+        with Session(engine) as session:
+            run = session.get(PipelineRun, uuid.UUID(pipeline_run_id))
+            if run is None:
+                return None
+            if run.correlation_id:
+                set_correlation_id(run.correlation_id)
+            if run.trace_id:
+                set_trace_id(run.trace_id)
+            return run.correlation_id
+    finally:
+        engine.dispose()
+
+
 def run_pipeline_sync(pipeline_run_id: str, github_token: str | None = None, resume: bool = False) -> None:
     from app.agents.orchestrator import orchestrator
 
+    correlation_id = _load_correlation_context(pipeline_run_id)
+    if correlation_id:
+        logger.info("pipeline task context run=%s correlation_id=%s", pipeline_run_id, correlation_id)
     _run_async(
         lambda: orchestrator.execute_pipeline(pipeline_run_id, github_token=github_token, resume=resume)
     )
@@ -107,7 +129,12 @@ def run_pipeline_task(self, pipeline_run_id: str, github_token: str | None = Non
 def run_monitoring_task(pipeline_run_id: str) -> dict[str, Any]:
     from app.agents.orchestrator import orchestrator
 
-    logger.info("monitoring task start run=%s", pipeline_run_id)
+    correlation_id = _load_correlation_context(pipeline_run_id)
+    logger.info(
+        "monitoring task start run=%s correlation_id=%s",
+        pipeline_run_id,
+        correlation_id or "-",
+    )
     return _run_async(lambda: orchestrator.run_monitoring(pipeline_run_id))
 
 

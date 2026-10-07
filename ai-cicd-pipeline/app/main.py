@@ -34,6 +34,8 @@ from app.api.routes import (
     unified_risk,
     reliability,
     intelligence,
+    memory_v2,
+    events_v2,
     multimodal,
     pipeline,
     policies,
@@ -231,6 +233,8 @@ app.include_router(autopilot.router, prefix="/api/v1")
 app.include_router(unified_risk.router, prefix="/api/v1")
 app.include_router(production.router, prefix="/api/v1")
 app.include_router(multimodal.router, prefix="/api/v1")
+app.include_router(memory_v2.router, prefix="/api/v2")
+app.include_router(events_v2.router, prefix="/api/v2")
 
 if FRONTEND_DIR.is_dir():
     app.mount("/ui", StaticFiles(directory=FRONTEND_DIR, html=True), name="ui")

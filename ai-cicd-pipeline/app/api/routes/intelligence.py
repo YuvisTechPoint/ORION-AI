@@ -397,6 +397,8 @@ async def intelligence_dashboard(
             "devops_rag": True,
             "rag_intelligence": True,
             "agent_memory": True,
+            "memory_gateway": settings.memory_gateway_enabled,
+            "platform_event_bus": settings.event_bus_enabled,
             "hybrid_retriever": True,
             "repository_intelligence": True,
             "external_scanners": True,

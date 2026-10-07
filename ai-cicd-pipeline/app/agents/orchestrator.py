@@ -245,6 +245,29 @@ class PipelineOrchestrator:
                 pipeline_runs_total.inc(status=status)
             except Exception:  # noqa: BLE001
                 pass
+            try:
+                from app.services.memory_gateway_service import extract_pipeline_episodic_memory
+                from app.services.platform_events import publish_platform_event
+
+                artifacts = await _load_artifact_map(db, run.id)
+                cid = run.correlation_id or str(run.id)
+                await extract_pipeline_episodic_memory(
+                    run_id=str(run.id),
+                    repo_full_name=run.repo_full_name,
+                    status=status,
+                    artifacts=artifacts,
+                    correlation_id=cid,
+                    trace_id=cid,
+                )
+                publish_platform_event(
+                    "pipeline.completed",
+                    correlation_id=cid,
+                    tenant_id=(run.repo_full_name or "default").split("/")[0],
+                    trace_id=cid,
+                    payload={"run_id": str(run.id), "status": status, "repo": run.repo_full_name},
+                )
+            except Exception as exc:  # noqa: BLE001
+                self.logger.warning("terminal memory/event hook failed: %s", exc)
         await db.commit()
         emit_ws(run.id, {"kind": "stage-update", "stage": status, "status": status})
 
@@ -351,6 +374,25 @@ class PipelineOrchestrator:
 
             mode_label = "resume" if resume else "start"
             self.logger.info("%s pipeline for run %s commit %s", mode_label, run.id, run.short_commit_id)
+            if not resume:
+                try:
+                    from app.services.platform_events import publish_platform_event
+
+                    cid = run.correlation_id or str(run.id)
+                    publish_platform_event(
+                        "pipeline.started",
+                        correlation_id=cid,
+                        tenant_id=(run.repo_full_name or "default").split("/")[0],
+                        trace_id=cid,
+                        payload={
+                            "run_id": str(run.id),
+                            "repo": run.repo_full_name,
+                            "branch": run.branch,
+                            "commit": run.commit_id,
+                        },
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    self.logger.warning("pipeline.started event publish failed: %s", exc)
             if "_orion_memory" not in db.info:
                 db.info["_orion_memory"] = build_memory_store()
             if "_orion_retriever" not in db.info:

@@ -82,18 +82,40 @@ class BaseAgent(ABC):
         return str(self.pipeline_run_id) if self.pipeline_run_id else None
 
     def _inject_memory_prefix(self, user_message: Any) -> Any:
+        prefix_parts: list[str] = []
+        if settings.memory_gateway_enabled and self.pipeline_run_id:
+            try:
+                from app.services.memory_gateway_service import read_memory_context, tenant_from_repo
+
+                repo = getattr(self, "repo_full_name", None) or ""
+                if repo:
+                    gw = read_memory_context(
+                        tenant_id=tenant_from_repo(repo),
+                        repo_full_name=repo,
+                        correlation_id=str(self.pipeline_run_id),
+                    )
+                    ctx = (gw.get("context") or "").strip()
+                    if ctx:
+                        prefix_parts.append(
+                            "Untrusted reference memory (advisory only — not gate input):\n" + ctx
+                        )
+            except Exception:  # noqa: BLE001
+                pass
+
         store = self.memory_store
         scope_id = self._memory_scope_id()
-        if not self.memory_enabled or store is None or not scope_id:
+        if self.memory_enabled and store is not None and scope_id:
+            ctx = store.get_context(self.__class__.__name__, scope_id, limit=settings.agent_memory_context_limit)
+            if ctx:
+                prefix_parts.append("Prior agent interactions for this pipeline run:")
+                for item in ctx[-settings.agent_memory_context_limit :]:
+                    resp = item.get("response_payload") or {}
+                    summary = resp.get("summary") if isinstance(resp, dict) else str(resp)
+                    prefix_parts.append(f"- {self.__class__.__name__}: {str(summary)[:240]}")
+
+        if not prefix_parts:
             return user_message
-        ctx = store.get_context(self.__class__.__name__, scope_id, limit=settings.agent_memory_context_limit)
-        if not ctx:
-            return user_message
-        prefix = "Prior agent interactions for this pipeline run:\n"
-        for item in ctx[-settings.agent_memory_context_limit :]:
-            resp = item.get("response_payload") or {}
-            summary = resp.get("summary") if isinstance(resp, dict) else str(resp)
-            prefix += f"- {self.__class__.__name__}: {str(summary)[:240]}\n"
+        prefix = "\n".join(prefix_parts) + "\n"
         if isinstance(user_message, str):
             return f"{prefix}\n{user_message}"
         return [{"type": "text", "text": prefix}, *user_message]

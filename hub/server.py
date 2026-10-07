@@ -27,6 +27,7 @@ from hub.federation.adapters import (
 )
 from hub.federation.client import CORRELATION_HEADER
 from hub.federation.intelligence_fanout import fanout_intelligence, fetch_orion_fleet
+from hub.federation.platform_events import fetch_orion_platform_events
 from hub.federation.operations_center import build_operations_center
 from hub.federation.timeline import build_timeline
 
@@ -190,6 +191,19 @@ async def control_plane_fleet(request: Request) -> dict[str, Any]:
 async def control_plane_operations(request: Request) -> dict[str, Any]:
     report = await build_operations_center(correlation_id=request.state.correlation_id)
     return report.model_dump()
+
+
+@app.get("/api/v1/control-plane/platform-events")
+async def control_plane_platform_events(
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=200),
+    event_type: str | None = None,
+) -> dict[str, Any]:
+    return await fetch_orion_platform_events(
+        correlation_id=request.state.correlation_id,
+        limit=limit,
+        event_type=event_type,
+    )
 
 
 async def _pipeline_event_stream(run_id: str, correlation_id: str):

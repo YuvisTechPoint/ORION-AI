@@ -189,6 +189,11 @@ POLICY_ENGINE=hybrid
 PERFORMANCE_BASELINE_PERSIST=true
 PERFORMANCE_BASELINE_GATE=false
 OTEL_EXPORT_ENABLED=false
+MEMORY_GATEWAY_ENABLED=true
+MEMORY_BACKEND=sqlite
+MEMORY_SQLITE_PATH=.local/orion-memory.db
+EVENT_BUS_ENABLED=true
+EVENT_BUS_BACKEND=auto
 """
     if _write(orion_path, orion_content, args.force):
         written.append(str(orion_path.relative_to(ROOT)))

@@ -29,6 +29,9 @@ async function renderOperationsCenter() {
     const policy = data.policy_panel || {};
     const security = data.security_panel || {};
     const performance = data.performance_panel || {};
+    const memory = data.memory_panel || {};
+    const platformEvents = data.platform_events || {};
+    const events = platformEvents.events || [];
 
     panel.innerHTML = `
       <div class="ops-kpis">
@@ -66,6 +69,22 @@ async function renderOperationsCenter() {
           <h3>Performance</h3>
           <p class="cp-meta">baseline persist ${performance.baseline_persist ? "on" : "off"} · gate ${performance.baseline_gate ? "on" : "off"}</p>
           <p class="cp-meta">fleet risk ${esc(performance.fleet_highest_risk || "—")}${performance.fleet_avg_risk != null ? ` · avg ${performance.fleet_avg_risk}` : ""}</p>
+        </div>
+      </div>
+      <div class="ops-columns ops-columns-3">
+        <div class="ops-col">
+          <h3>Memory & events</h3>
+          <p class="cp-meta">gateway ${memory.gateway_enabled ? "on" : "off"} · event bus ${memory.event_bus_enabled ? "on" : "off"}</p>
+          ${(memory.stacks || []).map((s) => `<div class="cp-meta">[${esc(s.stack)}] mem=${s.memory_gateway ? "✓" : "—"} events=${s.platform_event_bus ? "✓" : "—"}</div>`).join("") || `<p class="cp-empty">No memory telemetry.</p>`}
+        </div>
+        <div class="ops-col">
+          <h3>Platform events</h3>
+          ${events.length ? `<ul class="ops-list">${events.slice(0, 8).map((e) => `<li>${esc(e.event_type)} · ${esc(e.correlation_id || "")}</li>`).join("")}</ul>` : `<p class="cp-empty">No recent platform events.</p>`}
+        </div>
+        <div class="ops-col">
+          <h3>Event feed status</h3>
+          <p class="cp-meta">source ${esc(platformEvents.source || "—")} · count ${platformEvents.count ?? 0}</p>
+          <p class="cp-meta">${platformEvents.available ? "ORION /api/v2/events/recent" : esc(platformEvents.error || "unavailable")}</p>
         </div>
       </div>
       <div class="ops-columns">

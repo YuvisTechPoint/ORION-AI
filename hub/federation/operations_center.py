@@ -11,6 +11,7 @@ from hub.federation.intelligence_fanout import (
     fetch_orion_fleet,
     fetch_orion_incidents,
 )
+from hub.federation.platform_events import fetch_orion_platform_events
 from hub.federation.models import OperationsCenterReport, StackIntelligenceSnapshot
 
 
@@ -65,6 +66,7 @@ def _ops_panels(snapshots: list[StackIntelligenceSnapshot], fleet: dict[str, Any
     policy: dict[str, Any] = {"stacks": [], "opa_enabled": False, "policy_engine": "heuristic"}
     security: dict[str, Any] = {"stacks": [], "real_sast": False, "real_sca": False}
     performance: dict[str, Any] = {"stacks": [], "baseline_persist": False, "baseline_gate": False}
+    memory: dict[str, Any] = {"stacks": [], "gateway_enabled": False, "event_bus_enabled": False}
 
     for snap in snapshots:
         caps = snap.capabilities or {}
@@ -107,9 +109,21 @@ def _ops_panels(snapshots: list[StackIntelligenceSnapshot], fleet: dict[str, Any
         if caps.get("performance_baseline_gate"):
             performance["baseline_gate"] = True
 
+        memory["stacks"].append(
+            {
+                "stack": snap.stack,
+                "memory_gateway": bool(caps.get("memory_gateway")),
+                "platform_event_bus": bool(caps.get("platform_event_bus")),
+            }
+        )
+        if caps.get("memory_gateway"):
+            memory["gateway_enabled"] = True
+        if caps.get("platform_event_bus"):
+            memory["event_bus_enabled"] = True
+
     performance["fleet_highest_risk"] = fleet.get("highest_risk_repo")
     performance["fleet_avg_risk"] = fleet.get("avg_risk_score")
-    return {"policy": policy, "security": security, "performance": performance}
+    return {"policy": policy, "security": security, "performance": performance, "memory": memory}
 
 
 def _service_grid(
@@ -142,6 +156,7 @@ async def build_operations_center(*, correlation_id: str | None = None) -> Opera
     snapshots = await fanout_intelligence(correlation_id=correlation_id)
     fleet = await fetch_orion_fleet(correlation_id=correlation_id)
     incidents = await fetch_orion_incidents(correlation_id=correlation_id)
+    platform_events = await fetch_orion_platform_events(correlation_id=correlation_id, limit=20)
 
     items = pipelines.items
     active = sum(1 for row in items if row.status not in TERMINAL_STATUSES)
@@ -186,5 +201,7 @@ async def build_operations_center(*, correlation_id: str | None = None) -> Opera
         policy_panel=panels["policy"],
         security_panel=panels["security"],
         performance_panel=panels["performance"],
+        memory_panel=panels["memory"],
+        platform_events=platform_events,
         summary=summary,
     )

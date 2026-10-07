@@ -33,6 +33,7 @@ from services.github_service import GitHubService
 from services.slack_service import SlackService
 from services.qa_runner import QARunner
 from services.retriever import build_retriever
+from services.pipeline_terminal_hooks import publish_pipeline_started, run_terminal_hooks
 from services.state_store import BaseStateStore, build_state_store
 
 LOGGER = logging.getLogger(__name__)
@@ -112,6 +113,7 @@ class Orchestrator:
         github = GitHubService(github_token)
         repo_full = request.repo_full_name or GitHubService.parse_repo_full_name(request.clone_url or "")
         await slack.pipeline_started(state.pipeline_id, request.repo_name)
+        publish_pipeline_started(state, repo_full_name=repo_full or request.repo_name)
         await github.safe_commit_status(repo_full, None, "pending", "ORION canonical pipeline running")
         index_files = getattr(self.retriever, "index_files", None)
         if callable(index_files):
@@ -492,6 +494,7 @@ class Orchestrator:
             await slack.pipeline_failed(state.pipeline_id, deployment.reason if blocker_reasons else state.status)
             await github.safe_commit_status(repo_full, None, "failure", "Pipeline failed")
 
+        run_terminal_hooks(state, repo_full_name=repo_full or request.repo_name)
         self.state_store.upsert(state)
         return state
 
@@ -502,6 +505,7 @@ class Orchestrator:
             state.status = "cancelled"
             state.current_stage = "cancelled"
             self._record(state, "cancelled", "Pipeline cancelled by operator")
+            run_terminal_hooks(state)
             self.state_store.upsert(state)
             await self._publish_pipeline_event(state, "Pipeline cancelled by operator")
             return False
@@ -718,6 +722,7 @@ class Orchestrator:
             outcome=state.status,
             details={"reason": deployment.reason, "pipeline_id": pipeline_id},
         )
+        run_terminal_hooks(state)
         self.state_store.upsert(state)
         return state
 

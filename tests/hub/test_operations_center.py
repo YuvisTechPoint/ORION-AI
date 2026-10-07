@@ -123,7 +123,11 @@ async def test_build_operations_center_counts():
             with patch("hub.federation.operations_center.fanout_intelligence", new=AsyncMock(return_value=snapshots)):
                 with patch("hub.federation.operations_center.fetch_orion_fleet", new=AsyncMock(return_value={"highest_risk_repo": "acme/b"})):
                     with patch("hub.federation.operations_center.fetch_orion_incidents", new=AsyncMock(return_value=[])):
-                        report = await build_operations_center(correlation_id="cid-1")
+                        with patch(
+                            "hub.federation.operations_center.fetch_orion_platform_events",
+                            new=AsyncMock(return_value={"available": True, "count": 1, "events": [{"event_type": "pipeline.completed"}]}),
+                        ):
+                            report = await build_operations_center(correlation_id="cid-1")
 
     assert report.active_pipelines == 1
     assert report.blocked_pipelines == 1
@@ -133,6 +137,16 @@ async def test_build_operations_center_counts():
     assert report.policy_panel.get("stacks")
     assert report.security_panel.get("stacks") is not None
     assert "performance" in report.performance_panel or report.performance_panel.get("stacks") is not None
+    assert report.platform_events.get("count") == 1
+    assert report.memory_panel.get("stacks") is not None
+
+
+def test_platform_events_endpoint(client):
+    fake = {"available": True, "count": 2, "events": [{"event_type": "pipeline.started"}]}
+    with patch("hub.server.fetch_orion_platform_events", new=AsyncMock(return_value=fake)):
+        resp = client.get("/api/v1/control-plane/platform-events?limit=10")
+    assert resp.status_code == 200
+    assert resp.json()["count"] == 2
 
 
 def test_ops_panels_from_capabilities():
@@ -150,6 +164,8 @@ def test_ops_panels_from_capabilities():
                 "bandit_scanner": True,
                 "pip_audit_scanner": True,
                 "performance_baseline_persist": True,
+                "memory_gateway": True,
+                "platform_event_bus": True,
             },
         )
     ]
@@ -157,3 +173,4 @@ def test_ops_panels_from_capabilities():
     assert panels["policy"]["opa_enabled"] is True
     assert panels["security"]["real_sast"] is True
     assert panels["performance"]["baseline_persist"] is True
+    assert panels["memory"]["gateway_enabled"] is True

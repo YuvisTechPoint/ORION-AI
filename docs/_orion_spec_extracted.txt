@@ -1,0 +1,1703 @@
+ORION
+AI-Native Software Delivery and Reliability Control Plane
+Architecture, Feature Specification, Memory Architecture and Implementation Plan
+Open-Source Project Technical Specification
+Document Identifier: ORION-ARCH-001
+Version 1.0
+Date: 6 October 2026
+Status: Approved for Implementation Planning
+Classification: Public (Open-Source Project Documentation)
+Document Control
+Revision history
+Version
+Date
+Author
+Description
+1.0
+6 October 2026
+ORION Architecture Working Group
+Consolidated specification merging master agent reference, README, feature expansion report and phased roadmap
+Source documents consolidated
+No.
+Document
+1
+Binary-v2 (ORION) README
+2
+ORION / Binary-v2 Master Agents and Platform Reference (agents.md)
+3
+Advanced Feature and Architecture Expansion Report
+4
+Phase-wise Implementation Roadmap and Engineering Contract
+Intended readers
+Maintainers, contributors, platform and SRE engineers, security and compliance reviewers, and evaluators of the ORION project.
+Conventions
+Tables are numbered sequentially. Requirement identifiers use the prefixes MEM (memory) and F (feature). Priority P0 denotes the highest priority. Values stated as defaults are proposals pending the corresponding architecture decision record.
+Table of Contents
+1. Executive Summary
+ORION (Binary-v2) is a multi-stack, AI-assisted software delivery platform. Its current implementation comprises three independent pipeline stacks (Canonical DevOps, ORION CI/CD and the DevOps Platform), a Command Hub, shared text-analysis utilities, multimodal analysis agents, gate fusion, service level objective (SLO) computation, audit trails, role-based access control, Auto-PR remediation and Prometheus-based observability. The baseline is materially beyond a conventional CI/CD pipeline: hard security gates cannot be overridden by a language model, every agent persists structured artifacts, webhook delivery is idempotent, and pipelines are resumable at stage boundaries.
+This document consolidates the master agent reference, the product README, the advanced feature expansion report and the phased implementation roadmap into a single authoritative specification. It defines the target product, the architecture required to reach it, a persistent memory architecture for agents and operators, a catalog of advanced features and functions, governance and security controls, and a sequenced delivery plan with measurable exit criteria.
+Strategic position. ORION is positioned as an AI-Native Software Delivery and Reliability Control Plane: an open-source platform that analyzes code, predicts change risk, validates security and quality, orchestrates progressive deployments, monitors production, investigates incidents and safely automates remediation, while preserving deterministic gates ahead of any model-generated decision.
+Table 1. Principal recommendations
+No.
+Recommendation
+Rationale
+1
+Establish a verified baseline (Phase 0 audit) before building
+Documentation and code must be reconciled; several statements in the source documents are mutually inconsistent (Appendix C).
+2
+Evolve Command Hub into a unified control plane
+The three stacks are functionally strong but operationally siloed; a normalized resource model and correlation identifiers remove the silos without a monolith.
+3
+Introduce a governed, layered Memory Architecture
+Memory exists only in the canonical stack as SQLite. A shared Memory Gateway with typed layers, tenant isolation and poisoning defenses enables learning across runs and incidents.
+4
+Add a Change Risk Engine and Blast Radius analysis
+Gate fusion produces a verdict; a risk engine adds calibrated, explainable, historically informed scoring that drives test depth, deployment strategy and approval.
+5
+Complete the DevSecOps and supply-chain fabric
+Bandit and pip-audit are insufficient for enterprise assurance; SBOM, container, IaC, secret and provenance controls are required.
+6
+Adopt policy-as-code, agent permissions and an agent sandbox
+Autonomy must be bounded by explicit, auditable policy rather than by application code or model behavior.
+7
+Build the Evidence Graph and AIOps incident capability
+Linking commit, test, deployment, telemetry and incident data enables evidence-backed root cause analysis and postmortems.
+8
+Defer feature breadth; prioritize depth and verification
+Thirty additional independent agents would add surface area without assurance. Each capability must meet the Definition of Done in Section 24.
+2. Purpose, Scope and Audience
+2.1 Purpose
+This document specifies what ORION is, what it must become, how it is structured and how it will be delivered. It is intended to serve as the single reference for architecture decisions, implementation planning, security review and contributor onboarding for the open-source project.
+2.2 Audience
+Maintainers and contributors who implement features and need binding architectural rules.
+Platform and SRE engineers who operate ORION and require operational, security and reliability specifications.
+Security and compliance reviewers who assess controls, trust boundaries and evidence production.
+Evaluators and adopters who assess project maturity, roadmap credibility and engineering discipline.
+2.3 Scope
+In scope: the three pipeline stacks, Command Hub, shared libraries, agents, memory, policy, governance, security, observability, release engineering, incident management, developer experience, data model, configuration, testing and the delivery roadmap.
+Out of scope for this release of the document: managed SaaS hosting, a proprietary commercial edition, and replacement of the three-stack topology with a single monolith. The independent stacks are retained; integration is achieved through adapters and a control plane.
+2.4 Normative language
+The words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are used as defined in RFC 2119. Requirements phrased with MUST are mandatory for acceptance of the relevant phase.
+2.5 Assumptions
+The current implementation is the baseline; no capability is assumed to exist solely because it is documented.
+Python 3.11 or later and Node 20 or later remain the primary runtimes.
+PostgreSQL and Redis are available for production deployments; SQLite remains acceptable for local development only.
+The LLM provider is Anthropic Claude through the existing client abstraction; the architecture MUST remain provider-neutral at the interface level.
+3. Baseline: Current State Assessment
+3.1 Stack topology
+Table 2. Stacks, paths and endpoints
+Stack
+Path
+API port
+UI
+Primary role
+Command Hub
+hub/
+None
+5180
+Launcher, live health, intelligence panel
+Canonical DevOps
+backend/, frontend/
+8000
+5173
+Submit-code, archive and GitHub-zip pipelines
+ORION CI/CD
+ai-cicd-pipeline/
+8001
+/ui/ on API
+GitHub webhook driven pipeline and multimodal APIs
+DevOps Platform
+devops-platform/
+8002 (launcher); 8000 (Compose)
+3000
+Celery and PostgreSQL agent pipeline
+3.2 ORION CI/CD pipeline
+The primary production path proceeds as follows: GitHub push, webhook ledger (idempotency on X-GitHub-Delivery), ingestion, parallel full scan (code analysis, security, QA), stress test, approval, deployment, and asynchronous monitoring. Terminal statuses include deployed, approved, blocked_code, blocked_security, blocked_tests, blocked_stress, rejected, failed, rolled_back, auto_rolled_back and cancelled.
+Table 3. ORION pipeline stages and gates
+Stage
+Component
+Artifacts
+Gate outcome
+Ingest
+Orchestrator, GitService
+metadata, diff
+failed on clone error
+Full scan
+FullScanOrchestrator (parallel)
+code_analysis, security_scan, qa_report, full_scan_combined
+blocked_code, blocked_security, blocked_tests
+Stress
+StressTestAgent (Locust)
+stress_report
+blocked_stress
+Approval
+ApprovalAgent
+approval
+rejected (hard rules precede LLM)
+Deploy
+DeploymentAgent
+deployment_info, last_known_good_image
+failed, rolled_back
+Monitor
+MonitoringAgent
+monitoring_summary, monitoring_alert
+two consecutive rollback recommendations produce auto_rolled_back
+3.3 Established strengths
+Hard-rule gating: scanner severity from Bandit and pip-audit cannot be downgraded by the model.
+Artifact-first design: each agent persists structured JSON; gates read artifacts, not conversational output.
+Heuristic fallback: pipelines complete without an API key through deterministic logic.
+Webhook idempotency through a delivery ledger.
+Operator controls: retry, resume (checkpoint), cancel, audit trail and manual approval.
+Cross-stack parity for gate fusion, SLO computation, SLO alerting and text analysis.
+Observability: /health, /ready and /metrics on every stack, Grafana dashboard and Slack alerting.
+Multimodal agents: log, GitHub Actions, git history, payment, Dockerfile and production triage.
+Security hygiene: secret redaction and truncation before every LLM call, rate limiting and multi-key RBAC.
+3.4 Capability maturity
+Maturity is rated 1 (absent) to 5 (production-grade) against the target state. Ratings reflect the documented implementation and MUST be re-validated by the Phase 0 audit.
+Table 4. Capability maturity: current and target
+Capability
+Current
+Target
+Principal gap
+CI/CD orchestration
+5
+5
+Cross-stack unification
+AI code analysis
+4
+5
+Semantic and architecture-aware review
+Security (SAST, SCA)
+4
+5
+Reachability, SBOM, container, IaC, secrets
+QA automation
+4
+5
+Test selection, flaky detection, mutation testing
+Performance testing
+4
+5
+Baseline comparison and regression gate
+Deployment
+4
+5
+Canary, blue/green, verification-driven rollback
+Observability
+4
+5
+OpenTelemetry, traces, correlation
+Incident response
+3
+5
+Incident lifecycle, RCA, postmortem
+Supply-chain security
+2
+5
+SBOM, provenance, signing, attestation
+Infrastructure as Code and Kubernetes
+2
+5
+IaC scanning, manifest and rollout analysis
+Policy as code
+2
+5
+Central declarative policy engine
+AI governance
+2
+5
+Registries, evaluation, decision ledger
+Memory and knowledge
+2
+5
+Shared governed memory; canonical-only today
+Cost intelligence
+2
+5
+LLM and compute attribution
+Developer experience
+3
+5
+CLI, PR bot, IDE integration
+Enterprise governance and tenancy
+3
+5
+ABAC, SSO, multi-tenant isolation
+3.5 Known limitations in the baseline
+Authentication models differ per stack; no unified single sign-on.
+Vector retrieval and agent memory exist only in the canonical stack (hybrid file retriever, SQLite memory).
+Canonical SecurityAgent uses simulated scanners rather than Bandit.
+DevOps Platform Auto-PR records registry metadata only.
+Canonical and DevOps full scans are sequential; ORION is parallel.
+No unified resource identifiers or correlation identifiers across stacks.
+Playwright smoke coverage exists for the Hub and stacks only.
+3.6 Documentation integrity
+The source documents contain inconsistencies, summarized in Appendix C. The programme therefore treats documentation as a claim to be verified. Phase 0 produces a code-derived feature matrix that supersedes all prior statements.
+4. Strategic Positioning and Design Principles
+4.1 Product definition
+ORION is an autonomous DevSecOps and SRE platform for the full loop: Repository, Intelligence, Code/Security/QA, Supply Chain, Performance, Approval, Deployment, Verification, Monitoring, Incident Response, Remediation, Audit and Learning.
+4.2 Design principles
+Table 5. Binding design principles
+Principle
+Statement
+Fail closed
+Security-critical decisions MUST deny on error, timeout or uncertainty. Scanner severity MUST NOT be reduced by model output.
+Deterministic before probabilistic
+Hard rules and scanners run first. The model explains, prioritizes and proposes; it does not override.
+Evidence over assertion
+Every autonomous decision MUST cite artifacts. Statements without evidence references MUST NOT enter a postmortem, approval record or memory write.
+Artifacts as source of truth
+Structured, versioned, schema-validated artifacts are authoritative. Chat output is never a gate input.
+Policy-bounded autonomy
+Agent capability is granted by declarative policy and permission manifest, never assumed.
+Untrusted input
+Repository content, logs, pull request text and uploads are data, never instructions.
+Backward compatibility
+Existing endpoints and behavior MUST be preserved; changes use adapters and versioned contracts.
+Independent stacks, shared contracts
+Stacks remain deployable alone; integration is by contract (resource model, events, correlation).
+Observable by default
+Every component emits metrics, structured logs and traces carrying correlation identifiers.
+Depth over breadth
+Features are complete when persisted, authorized, observable, tested and documented.
+5. Target Architecture
+5.1 Six control planes
+The target architecture organizes capability into six planes that share a common resource model, event backbone, memory gateway and policy engine.
+Table 6. Control planes
+Plane
+Responsibility
+Principal components
+Source
+Repository and change ingestion
+GitHub webhook and App, repository fingerprinting, CODEOWNERS, ownership, service graph
+Intelligence
+Analysis, prediction, retrieval
+Risk Engine, Blast Radius, Memory Gateway, RAG, model router, AgentEval
+Policy
+Rules and compliance
+Policy engine, compliance packs, autonomy policy, approval policy
+Delivery
+Build, verify, release
+Scanners, test intelligence, performance, release manager, canary, blue/green, GitOps
+Reliability
+Operate and recover
+Telemetry, SLO and error budget, incident commander, RCA, remediation, chaos, DR
+Governance
+Audit, cost, access
+Audit explorer, decision ledger, FinOps, RBAC and ABAC, tenancy, release passport
+5.2 Layered logical architecture
+Experience layer: Command Hub (Operations Console), stack UIs, ORION CLI, GitHub App and pull request bot, IDE extension.
+Control-plane API layer: Unified Resource API, Search API, Audit API, Artifact API, Policy API, Memory API, Agent Runtime API. Versioned under /api/v2 with adapters to the existing /api/v1 and stack-specific routes.
+Orchestration layer: Existing PipelineOrchestrator, canonical Orchestrator and pipeline_runner retained; an Agent Runtime and Event Bus are introduced alongside them.
+Agent layer: Pipeline agents, intelligence agents, multimodal agents and remediation agents registered in the Agent Registry.
+Knowledge layer: Memory Gateway, Evidence Graph, Repository Knowledge Graph, vector and lexical indexes.
+Platform layer: PostgreSQL, Redis, Celery, object store for artifacts, Docker and Kubernetes adapters, OpenTelemetry collector, Prometheus, Grafana.
+Security layer (cross-cutting): Input firewall, secret redaction, sandbox, identity, policy enforcement point, encryption, audit.
+5.3 Event backbone
+Stage execution remains orchestrated, but each state change is also published as an immutable event so that new agents can subscribe without orchestrator modification. The initial backbone uses Redis Streams with consumer groups; the interface is abstracted so that a broker such as NATS or Kafka can replace it.
+Table 7. Canonical event types
+Event
+Producer and consumers
+commit.received, pipeline.started
+Webhook handlers; Control Plane, Memory Gateway, Cost Agent
+scan.completed (code, security, qa, supply_chain)
+Scan agents; Risk Engine, Policy Engine, Evidence Graph
+risk.scored, policy.evaluated
+Risk Engine, Policy Engine; Approval, Release Manager
+approval.requested, approval.granted, approval.denied
+Approval service; Release Manager, audit
+deployment.started, deployment.verified, deployment.failed, rollback.completed
+Release Manager; Monitoring, Incident Commander, Evidence Graph
+slo.breached, anomaly.detected
+Telemetry and SLO engines; Incident Commander
+incident.declared, incident.resolved
+Incident Commander; Postmortem Agent, Memory Gateway
+memory.written, memory.quarantined
+Memory Gateway; audit, governance
+agent.invoked, agent.completed, agent.overridden
+Agent Runtime; AgentEval, FinOps, decision ledger
+Every event carries event_id, correlation_id, trace_id, tenant_id, source_stack, occurred_at, schema_version and a payload validated against a registered schema.
+5.4 Deployment topology
+TLS terminates at an edge proxy (nginx or cloud load balancer, TLS 1.2 or later). Internal traffic remains within a private network with optional mutual TLS. Stateless API containers scale horizontally; Celery workers scale by queue depth; PostgreSQL runs with TLS and provider-managed disk encryption; Redis is configured with persistence appropriate to its role (cache versus stream). Agent sandboxes execute on a separate worker pool with no production credentials and restricted egress.
+5.5 Architecture decision records
+Every decision that changes a boundary, contract or dependency MUST be recorded as an Architecture Decision Record in docs/adr/ with context, decision, alternatives and consequences. The first records to be written are: unified resource identifier format, event backbone selection, vector store selection, policy language selection and tenancy model.
+6. Memory Architecture
+6.1 Objectives
+The platform currently has memory only in the canonical stack (SQLiteAgentMemoryStore, HybridFileRetriever). The target is a single governed Memory Gateway, available to all stacks, that allows agents and operators to recall prior pipelines, incidents, deployments, remediation outcomes and organizational knowledge, while preventing leakage across tenants, secrets persistence and memory poisoning.
+Table 8. Memory requirements
+ID
+Requirement
+MEM-01
+All memory access MUST pass through the Memory Gateway; agents MUST NOT access stores directly.
+MEM-02
+Every record MUST carry tenant, namespace, provenance, confidence, trust level, created and expiry timestamps and a content hash.
+MEM-03
+Secrets MUST be redacted before any write; the write path MUST fail closed if redaction fails.
+MEM-04
+Memory content MUST be presented to agents as untrusted reference data, never as instructions.
+MEM-05
+Retrieval MUST be tenant- and ACL-filtered before ranking.
+MEM-06
+Memory MUST NOT be a gate input. Gates read artifacts and scanner results only; memory informs explanation, prioritization and proposals.
+MEM-07
+Retention, expiry, deletion and legal-hold MUST be enforceable per namespace, with deletion propagating to indexes and backups according to policy.
+MEM-08
+Every read and write MUST be audit-logged with correlation_id, actor (agent or user) and purpose.
+MEM-09
+The system MUST function with memory disabled (MEMORY_ENABLED=false) and with the vector index unavailable (lexical fallback).
+6.2 Memory layers
+Memory is organized into six typed layers, differing in lifetime, granularity, write authority and retrieval pattern.
+Table 9. Memory layers
+Layer
+Content
+Lifetime
+Primary store
+Write authority
+L1 Working
+Per-run context: current diff summary, intermediate findings, tool outputs
+Run duration plus short grace period
+Redis (hash, TTL)
+Executing agent
+L2 Episodic
+Pipeline runs, deployments, incidents, remediation attempts, outcomes
+90 to 730 days (configurable)
+PostgreSQL
+Memory Gateway extractor on terminal events
+L3 Semantic
+Repository knowledge: services, modules, APIs, dependencies, ownership, conventions
+Rolling; refreshed per commit
+PostgreSQL plus pgvector, graph tables
+Repository Intelligence Agent
+L4 Procedural
+Runbooks, playbooks, approved remediations, prompt and policy versions
+Versioned; retained
+PostgreSQL, object store
+Humans with review; promoted candidates
+L5 Organizational
+Architecture decisions, standards, SLO targets, team conventions, compliance evidence
+Long-term
+PostgreSQL plus pgvector
+Administrators and approved ingestion
+L6 Decision ledger
+Immutable record of agent decisions, evidence, confidence and human overrides
+Per audit retention
+PostgreSQL (append-only), signed digest
+Agent Runtime only
+6.3 Structural layout
+The memory subsystem is arranged in four tiers: producers, the gateway, stores, and consumers. The wiring below is stated in textual form.
+PRODUCERS: pipeline events, incident events, agent outputs, operator actions, document ingestion
+        |  (events on the Event Bus; direct API for operator-authored memory)
+WRITE PATH: Extractor -> Redaction -> Classifier -> Trust Scorer -> Deduplicator -> Writer
+        |
+MEMORY GATEWAY: namespace router, policy enforcement point, audit logger, quota manager
+        |
+STORES: Redis (L1) | PostgreSQL relational (L2, L4, L5, L6) | pgvector (L2, L3, L5 embeddings)
+        | graph tables kg_nodes and kg_edges (L3, Evidence Graph) | object store (artifacts, large bodies)
+        |
+READ PATH: Query Planner -> Filter (tenant, ACL, namespace) -> Hybrid Retrieval -> Rerank ->
+           Diversity (MMR) -> Context Packer (token budget) -> Injection Guard -> Agent
+        |
+CONSUMERS: pipeline agents, Incident Commander, Postmortem Agent, PR bot, CLI, operators
+ 
+6.4 Namespaces and keys
+Every record belongs to a namespace of the form tenant/workspace/project/repository/layer/kind. Access policy is evaluated against the namespace. Cross-repository retrieval is permitted only where the caller holds the corresponding grant and the namespace policy allows federation.
+Table 10. Namespace examples
+Namespace
+Purpose
+acme/platform/payments/payments-api/episodic/pipeline
+Pipeline run summaries for one repository
+acme/platform/payments/payments-api/semantic/code
+Code structure and dependency summaries
+acme/platform/-/-/episodic/incident
+Incident memory shared across projects within a workspace
+acme/-/-/-/organizational/standards
+Organization-wide engineering standards
+acme/platform/-/-/procedural/runbook
+Runbooks available to a workspace
+6.5 Memory record schema
+Table 11. Fields of memory_records
+Field
+Type
+Description
+record_id
+UUID
+Stable identifier
+tenant_id, namespace
+text
+Isolation and policy scope
+layer, kind
+enum, text
+Layer L1 to L6; kind such as pipeline_summary, incident, runbook, convention
+title, body
+text
+Redacted human-readable content; body size capped per kind
+structured
+JSONB
+Schema-validated fields (service, commit, error signature, outcome)
+source_refs
+JSONB array
+Artifact identifiers, commit SHA, run identifier, incident identifier
+provenance
+JSONB
+Producing agent, version, prompt version, model, input hashes
+trust_level
+enum
+verified (scanner or human), derived (agent with evidence), unverified (agent without evidence)
+confidence
+real 0..1
+Calibrated confidence of the claim
+content_hash
+text
+SHA-256 for deduplication and tamper detection
+created_at, updated_at, expires_at
+timestamptz
+Lifecycle control
+usage_count, last_used_at, feedback_score
+integer, timestamptz, real
+Reinforcement signal from retrieval outcomes
+status
+enum
+active, superseded, quarantined, expired, deleted
+correlation_id, trace_id
+text
+Cross-stack tracing
+Table 12. Supporting tables
+Table
+Purpose
+memory_embeddings
+Vector column (pgvector), embedding model identifier, dimension, record reference; approximate nearest-neighbour index (HNSW)
+memory_links
+Typed edges between records (caused_by, fixed_by, supersedes, similar_to, derived_from)
+memory_namespaces
+Namespace definitions, retention, quota, federation and write-review policy
+memory_access_log
+Append-only read and write audit with actor, purpose and correlation identifier
+memory_quarantine
+Records withheld for suspected poisoning, injection content or secret detection, with reason and reviewer
+memory_consolidation_runs
+History of summarization, deduplication and expiry jobs
+decision_ledger
+Append-only agent decisions with evidence, confidence, deterministic checks, override and hash chain
+kg_nodes, kg_edges
+Repository Knowledge Graph and Evidence Graph nodes and typed edges
+6.6 Write path
+Table 13. Write path stages
+Step
+Stage
+Behavior
+1
+Extract
+Convert terminal events and artifacts into candidate records (for example, pipeline summary, incident summary, remediation outcome). Extraction is deterministic first; model summarization is permitted for prose and is schema-validated.
+2
+Redact
+Apply redact_secrets and PII rules. A redaction failure aborts the write.
+3
+Classify
+Assign layer, kind, namespace and retention. Reject content classified as instructions directed at agents.
+4
+Trust score
+Set trust_level and confidence from provenance: scanner or human-verified data scores highest; model-only claims without evidence are unverified and are excluded from default retrieval.
+5
+Deduplicate
+Compare content_hash and embedding similarity; merge, supersede or discard near-duplicates.
+6
+Screen
+Run the injection and poisoning detector. Suspicious records are placed in memory_quarantine.
+7
+Write
+Persist transactionally with embedding, links and audit entry; emit memory.written.
+6.7 Read path and retrieval scoring
+Retrieval first restricts the candidate set by tenant, namespace grants, status and minimum confidence. It then combines semantic similarity, lexical match, recency, provenance trust and usage feedback. The default weighted score is:
+score = 0.45 x semantic + 0.25 x lexical (BM25) + 0.15 x recency_decay + 0.10 x trust + 0.05 x feedback
+ 
+Results are reranked, diversified using maximal marginal relevance, and packed into the context under MEMORY_CONTEXT_TOKEN_BUDGET. Each item is wrapped with its provenance and delimited as reference data. The injection guard removes imperative content directed at the agent. If the vector index is unavailable, retrieval degrades to lexical search and the response is flagged degraded.
+6.8 Consolidation, learning and forgetting
+Summarization: nightly job condenses clusters of similar episodic records into higher-level lessons, retaining links to sources.
+Reinforcement: records that contributed to accepted outcomes gain feedback score; records associated with rejected or overridden outputs lose score.
+Promotion: repeated successful remediations are proposed as procedural candidates; promotion to a runbook requires human review.
+Decay and expiry: recency decay applies at retrieval; expiry removes records per namespace retention.
+Supersession: newer verified records supersede older ones, preserving history through memory_links.
+Right to erasure: deletion requests propagate to records, embeddings, links and caches; ledger entries retain hashes only.
+6.9 Security and integrity
+Table 14. Memory threats and controls
+Threat
+Control
+Memory poisoning through logs or repository content
+Provenance and trust levels; quarantine on injection signatures; unverified records excluded by default; human review for procedural promotion
+Cross-tenant leakage
+Row-level security on tenant_id; namespace ACL evaluated before ranking; separate encryption key reference per tenant where configured
+Secret persistence
+Redaction before write; periodic secret re-scan of stored records; automatic quarantine on detection
+Stale or incorrect guidance
+Confidence, recency decay, supersession, feedback reinforcement and display of provenance to operators
+Tampering
+Content hash per record; hash-chained decision ledger; optional signed daily digest
+Availability loss
+Memory is advisory; agents continue with memory disabled or degraded
+6.10 Configuration
+Table 15. Memory configuration variables
+Variable
+Default
+Meaning
+MEMORY_ENABLED
+true
+Global switch
+MEMORY_BACKEND
+postgres
+sqlite (development) or postgres
+MEMORY_VECTOR_BACKEND
+pgvector
+none or pgvector
+MEMORY_EMBEDDING_MODEL
+configured
+Embedding model identifier recorded with each vector
+MEMORY_EMBEDDING_DIM
+per model
+Vector dimension
+MEMORY_RETRIEVAL_TOP_K
+8
+Candidates returned before packing
+MEMORY_CONTEXT_TOKEN_BUDGET
+3000
+Maximum memory tokens injected per agent call
+MEMORY_MIN_CONFIDENCE
+0.5
+Minimum confidence for default retrieval
+MEMORY_TTL_DAYS_EPISODIC
+365
+Episodic retention
+MEMORY_WORKING_TTL_SECONDS
+7200
+Working memory expiry
+MEMORY_WRITE_REQUIRES_REVIEW
+procedural
+Layers whose writes need human approval
+MEMORY_QUARANTINE_ENABLED
+true
+Enable poisoning screen
+MEMORY_CONSOLIDATION_CRON
+0 2 * * *
+Consolidation schedule
+MEMORY_TENANT_ISOLATION
+rls
+Isolation mode for the store
+MEMORY_ENCRYPTION_KEY_REF
+unset
+Reference to a secret-manager key for column-level encryption
+6.11 Migration from the current implementation
+Define a MemoryStore protocol matching the existing SQLiteAgentMemoryStore and InMemoryAgentMemoryStore interfaces.
+Implement the PostgreSQL store behind the protocol and keep the SQLite store for local use.
+Port memory injection into the ORION and DevOps agents through the Memory Gateway client, disabled by default and enabled per agent.
+Backfill episodic memory from existing pipeline_runs, artifacts and audit trails through an idempotent import job.
+Add the memory evaluation suite (Section 22) before enabling memory in any gate-adjacent agent.
+6.12 Memory quality metrics
+Retrieval precision at k and recall against a labelled evaluation set.
+Groundedness: proportion of agent claims supported by cited memory or artifacts.
+Quarantine rate and false-quarantine rate.
+Stale-record rate and supersession lag.
+p95 retrieval latency (target below 150 ms for lexical, below 400 ms for hybrid).
+Memory-assisted outcome uplift: change in remediation acceptance or time to diagnosis with memory enabled versus disabled.
+7. Advanced Feature and Function Catalog
+The catalog below lists the recommended features, grouped by domain. Each feature has a priority (P0 highest), the existing component it extends and the artifact it produces. Features are specified in detail in later sections where indicated.
+7.1 Intelligence and risk
+Table 16. Intelligence features
+ID
+Feature
+Priority
+Extends
+Artifact or output
+F-01
+Change Risk Engine with explainable component scores
+P0
+Gate fusion
+risk_assessment
+F-02
+Blast Radius analysis (services, data stores, APIs)
+P0
+Impact analysis
+blast_radius
+F-03
+Service Dependency Graph from Git, Compose, Kubernetes, Terraform, OpenAPI and telemetry
+P0
+Repository intelligence
+service_graph
+F-04
+Repository fingerprinting, language, framework and monorepo detection
+P0
+GitService
+repo_fingerprint
+F-05
+Ownership and CODEOWNERS resolution
+P1
+Repository intelligence
+ownership_map
+F-06
+Predictive release failure probability
+P2
+Risk Engine plus memory
+release_prediction
+F-07
+Evidence Graph linking commit to incident
+P1
+Artifacts, audit
+evidence_graph
+F-08
+Architectural drift and API breaking-change detection
+P1
+CodeAnalysisAgent
+api_diff, drift_report
+7.2 Code and test engineering
+Table 17. Code and test features
+ID
+Feature
+Priority
+Extends
+Artifact or output
+F-10
+Multi-level code review (syntax to production risk, levels L0 to L7)
+P1
+CodeAnalysisAgent
+code_analysis v2
+F-11
+AI-generated code and hallucinated-dependency detection
+P1
+CodeAnalysisAgent, SCA
+dependency_authenticity
+F-12
+Intelligent test selection from change impact
+P0
+QAAgent
+test_plan
+F-13
+Flaky test detection and history
+P0
+QAAgent
+test_history
+F-14
+Mutation testing on changed modules
+P2
+QAAgent
+mutation_report
+F-15
+Coverage trend and regression gate
+P1
+QAAgent
+coverage_report
+F-16
+Contract testing and OpenAPI breaking-change gate
+P1
+QAAgent
+contract_report
+F-17
+AI test generation with validation of generated tests
+P2
+TestGenerationAgent
+generated_tests
+F-18
+Autonomous fix loop with patch confidence
+P1
+Auto-PR
+patch_report
+7.3 Security and supply chain
+Table 18. Security features
+ID
+Feature
+Priority
+Tooling
+Artifact
+F-20
+SAST expansion
+P0
+Semgrep, Bandit, CodeQL where licensed
+sast_report
+F-21
+SCA with CVSS, EPSS and reachability
+P0
+pip-audit, OSV, Grype
+sca_report
+F-22
+SBOM generation (CycloneDX, SPDX)
+P0
+Syft
+sbom
+F-23
+Secret detection with remediation guidance
+P0
+Gitleaks plus ORION rules
+secret_report
+F-24
+Container image security
+P0
+Trivy, Hadolint
+container_report
+F-25
+IaC security (Terraform, Kubernetes, Helm, Compose)
+P1
+Checkov, Conftest
+iac_report
+F-26
+License compliance
+P1
+SBOM-derived
+license_report
+F-27
+Build provenance, artifact signing and attestation
+P1
+Sigstore, cosign, in-toto
+provenance_report, attestation
+F-28
+Typosquatting and malicious package heuristics
+P2
+Registry metadata
+supply_chain_report
+F-29
+DAST against preview or staging environments
+P2
+OWASP ZAP
+dast_report
+7.4 Delivery and release
+Table 19. Delivery features
+ID
+Feature
+Priority
+Extends
+Artifact
+F-30
+Release Manager with environment promotion
+P1
+DeploymentAgent
+release_record
+F-31
+Canary and progressive rollout with metric comparison
+P1
+DeploymentAgent
+canary_report
+F-32
+Blue/green deployment
+P2
+DeploymentAgent
+deployment_info v2
+F-33
+Verification-driven automatic rollback
+P1
+MonitoringAgent
+rollback_decision
+F-34
+Ephemeral preview environments per pull request
+P2
+DeploymentAgent
+preview_env
+F-35
+Synthetic production monitoring of critical journeys
+P1
+MonitoringAgent
+synthetic_report
+F-36
+Performance regression gate against baseline
+P1
+StressTestAgent
+perf_comparison
+F-37
+Release Passport and Change Passport
+P0
+Artifacts, audit
+release_passport, change_passport
+F-38
+AI-classified release notes
+P2
+Release Manager
+release_notes
+7.5 Reliability and operations
+Table 20. Reliability features
+ID
+Feature
+Priority
+Extends
+Artifact
+F-40
+Incident Commander with lifecycle and severity
+P1
+ProductionTriageAgent
+incident
+F-41
+Automated root cause analysis with correlated evidence
+P1
+LogAnalysisAgent
+rca_report
+F-42
+Incident timeline and postmortem generation
+P1
+Evidence Graph
+timeline, postmortem
+F-43
+Runbook automation with approval policy
+P2
+Procedural memory
+runbook_execution
+F-44
+SLO and error budget engine with release freeze policy
+P1
+SLO modules
+error_budget
+F-45
+OpenTelemetry-native tracing and correlation
+P1
+Prometheus
+trace links
+F-46
+Anomaly detection with baseline learning and alert grouping
+P2
+MonitoringAgent
+anomaly_report
+F-47
+Chaos experiments in isolated environments
+P3
+ChaosAgent
+chaos_report
+F-48
+Disaster recovery verification (RTO, RPO)
+P3
+DRAgent
+dr_report
+F-49
+Kubernetes, Helm and Terraform analysis
+P2
+KubernetesAgent
+k8s_report
+7.6 Governance, platform and experience
+Table 21. Governance and platform features
+ID
+Feature
+Priority
+Extends
+Artifact
+F-50
+Policy-as-code engine with compliance packs
+P0
+Approval rules
+policy_evaluation
+F-51
+Multi-party approval workflow with four-eyes rule and expiry
+P1
+ApprovalAgent
+approval_record
+F-52
+Agent Registry, permission manifest and sandbox
+P0
+BaseAgent
+agent_manifest
+F-53
+Agent Input Firewall (prompt injection defense)
+P0
+text_analysis
+input_screen
+F-54
+Model router, prompt registry and AgentEval
+P1
+Per-agent models
+eval_report
+F-55
+Decision ledger and AI observability
+P1
+Audit trail
+decision_ledger
+F-56
+FinOps and AI cost intelligence
+P2
+Metrics
+cost_report
+F-57
+Unified control plane, search and knowledge graph
+P0
+Command Hub
+resource model
+F-58
+DORA metrics and engineering health
+P2
+SLO modules
+dora_report
+F-59
+ORION CLI, GitHub App and pull request intelligence
+P1
+Webhook handlers
+PR review comment
+F-60
+Enterprise identity: SSO, ABAC, tenancy, service accounts
+P2
+RBAC
+authorization decisions
+F-61
+Service catalog and developer portal
+P3
+Command Hub
+service record
+F-62
+ORION Autopilot with configurable autonomy
+P3
+All
+autopilot_run
+Features not recommended at this stage: additional independent agents without evaluation datasets; a general chatbot; a vector database replicated into every service; blockchain audit trails; unrestricted autonomous shell access to production; overlapping dashboards; a second orchestration framework adopted without a demonstrated need; and any AI decision without a deterministic gate.
+8. Intelligence Engine Specifications
+8.1 Change Risk Engine
+The Risk Engine converts evidence into a composite score from 0 to 100 together with component scores, a confidence value and an explanation that cites artifacts. It is deterministic given its inputs; model assistance is limited to narrative explanation.
+Table 22. Risk components and default weights
+Component
+Weight
+Principal inputs
+Code
+10
+Complexity delta, lint and AST findings, semantic diff, generated-code indicators
+Security
+20
+SAST, secrets, authentication or authorization paths touched, container and IaC findings
+Supply chain
+12
+CVSS, EPSS, reachability, license, provenance, new or unpinned dependencies
+Test
+12
+Failures, flaky share, coverage delta, mutation score, missing tests for changed code
+Performance
+8
+p95 and error-rate delta against baseline, resource saturation
+Blast radius
+15
+Downstream services, data stores, public APIs, tenant exposure, service criticality
+Operational
+13
+Schema migrations, infrastructure changes, error budget remaining, change window, deployment frequency
+Historical
+10
+Past failures of similar changes, author and component history, recent incidents (from episodic memory)
+Bands: 0 to 24 Low; 25 to 49 Medium; 50 to 74 High; 75 to 100 Critical. Weights are configurable per repository and per environment through policy. The composite is the weighted sum of component scores.
+Overrides. A critical scanner finding, an unresolved secret, a failed hard gate or an unsigned artifact where signing is required produces verdict block irrespective of the composite. The score never lowers a hard-gate outcome. Low confidence (below a configured threshold) routes the decision to human review and extends test depth.
+Consumers. The score selects test scope (targeted or full regression), deployment strategy (rolling, canary or blue/green), approval requirements and canary duration. It is recorded in the Release Passport and used by pull request intelligence.
+Calibration. Predicted risk is compared with outcomes (rollback, incident, change failure). Calibration error and ranking quality (for example, area under the curve) are tracked and reported through AgentEval; weights change only through a reviewed configuration change.
+8.2 Blast Radius Engine
+Blast radius is computed by traversing the Service Dependency Graph from changed files to owning service, then to dependent services, data stores, public interfaces and user-facing journeys. The output lists affected services, data stores and endpoints, an estimated severity class, and recommended controls (extended integration tests, staging soak, canary, synthetic journey checks, manual approval). Graph edges carry a source (static, declared or runtime) and confidence; runtime-observed edges outrank inferred edges.
+8.3 Service Dependency Graph and Repository Knowledge Graph
+Sources: Git repositories, Docker Compose, Kubernetes manifests, Terraform, OpenAPI documents, import graphs, runtime traces and logs.
+Model: nodes (repository, service, module, function, API, data store, test, owner, deployment, incident) and typed edges (calls, imports, owns, tests, deploys_to, depends_on, affected_by).
+Storage: kg_nodes and kg_edges in PostgreSQL with recursive queries; migration to a dedicated graph store only when scale demands.
+Use: blast radius, test selection, deployment ordering, incident diagnosis, architecture visualization and developer queries.
+8.4 Evidence Graph
+The Evidence Graph links commit, pull request, changed files, tests, security findings, SBOM, build, image digest, deployment, telemetry windows, incident, rollback and remediation. Every node references an artifact. It allows ORION to answer why an incident occurred through a traversable chain, and it is the sole permitted source of factual statements in generated postmortems. Statements without a supporting edge are labelled as hypotheses.
+8.5 Autonomous fix loop and patch confidence
+The fix loop proceeds from detection through diagnosis, patch generation in an isolated sandbox, build, unit and regression tests, security and type checks, patch confidence scoring and pull request creation. The model never writes to production or to protected branches.
+Table 23. Patch confidence dispositions
+Confidence
+Disposition
+Conditions
+90 percent or above
+Open pull request
+Build, tests, security, lint and type checks pass; diff complexity low; no hard-gate regression
+70 to below 90 percent
+Open pull request marked review required
+All blocking checks pass; one or more advisory checks degraded
+Below 70 percent
+Reject patch and report diagnosis only
+Any blocking check fails or uncertainty is high
+The confidence value is computed from check outcomes, diff size and complexity, test coverage of the changed lines and model-reported uncertainty. Thresholds are policy-controlled and apply only to pull request creation; merge and deployment remain subject to approval policy.
+8.6 Test intelligence
+Selection: changed files are mapped through the dependency graph to impacted tests; full regression is forced when risk is High or Critical, when shared infrastructure changes, or when selection confidence is low.
+Flakiness: per-test pass, fail and retry-pass counts yield a flakiness rate and classification (stable, flaky, newly failing, consistently failing, environment-sensitive); flaky tests are quarantined from gating but remain visible.
+Mutation testing: applied to changed modules with a time budget; mutation score replaces raw coverage as a quality signal where available.
+Generation: generated tests are executed, must fail on seeded defects where feasible, and are never merged without review.
+9. Agent Platform
+9.1 Agent Registry
+All agents register a manifest. The registry is the source for capability discovery, scheduling, permission checks and observability.
+Table 24. Agent manifest fields
+Field
+Description
+name, version
+Unique identifier and semantic version
+capabilities
+Declared functions and input types
+input_artifacts, output_artifacts
+Artifact types consumed and produced, with schema versions
+permissions
+Read, write, execute and external scopes (see Section 9.2)
+risk_level
+Low, medium or high; determines approval and sandbox profile
+model_policy
+Allowed models, router class, maximum tokens, temperature bounds
+timeout, retries, circuit_breaker
+Execution bounds
+budget
+Token and cost ceilings per run and per day
+fallback
+Deterministic fallback behavior when the model is unavailable
+memory_access
+Namespaces readable and writable through the Memory Gateway
+9.2 Permission model
+Permissions are least-privilege and enforced by the Agent Runtime, not by the agent. Example profiles:
+Table 25. Example permission profiles
+Agent
+Read
+Write
+Execute and external
+SecurityAgent
+Repository, dependency manifests
+Artifacts
+Security scanners; no external network except vulnerability databases
+QAAgent
+Repository, test history
+Artifacts
+Test runner in sandbox; no production credentials
+DeploymentAgent
+Approved release record
+Deployment records
+Docker or Kubernetes adapter; approval required
+RemediationAgent
+Repository, artifacts, memory
+Branch and pull request only
+Sandbox build and tests; no merge rights
+IncidentAgent
+Telemetry, deployments, memory
+Incident and timeline
+Read-only diagnostics; mitigation requires approval
+9.3 Sandbox
+Agents that execute code, apply patches or run scanners against untrusted content run in ephemeral containers with: read-only base filesystem and ephemeral workspace; no production credentials; egress allow-list; CPU, memory, process and wall-clock limits; no host mounts; non-root user; and seccomp and capability restrictions. Sandbox results are returned as artifacts only.
+9.4 Agent Input Firewall
+Input to any agent passes through: classification (trusted instruction, untrusted data), unicode normalization, secret redaction, injection pattern detection, structural isolation (untrusted content delimited and labelled as data) and truncation with head and tail preservation. Detected injection attempts are recorded as findings, may raise risk and never alter agent instructions. For example, repository text instructing a reviewer to approve a deployment is flagged and ignored.
+9.5 Agent Runtime and orchestration
+Structured task envelopes with correlation identifiers, deadline, budget and input artifact references.
+Task queue with priority, retries with exponential backoff and jitter, dead-letter queue and idempotency keys.
+Circuit breakers per agent and per model provider.
+Context isolation: each task receives only declared artifacts and memory namespaces.
+Planner-driven fan-out and fan-in for multi-agent workflows, with the Risk Engine and Approval service as deterministic joins.
+Health and scoring per agent from success rate, fallback rate, latency and override rate.
+9.6 Autonomy levels
+Table 26. Remediation and autonomy levels
+Level
+Name
+Behavior and default
+0
+Explain
+Describe the finding or incident. Default for all new agents.
+1
+Recommend
+Propose actions with evidence.
+2
+Generate patch
+Produce a patch in the sandbox; no repository write.
+3
+Create pull request
+Open a branch and pull request; enabled by policy per repository.
+4
+Test pull request
+Run full verification on the pull request.
+5
+Deploy pull request
+Deploy to non-production through the release pipeline after approval.
+6
+Autonomous remediation
+Disabled by default; only for named runbooks, named services and environments, with time-boxed grants and automatic rollback.
+Autopilot modes map onto these levels: Manual (0 to 1), Assisted (up to 3), Supervised (up to 5 with approval) and Autonomous (6 for authorized runbooks only).
+10. AI Governance and LLM Safety
+10.1 Registries
+Table 27. Governance registries
+Registry
+Content
+Model registry
+Allowed models, versions, provider, context size, cost rates, approved task classes
+Prompt registry
+Versioned prompts per agent, schema, change history, evaluation results, promotion status
+Evaluation registry
+Datasets, metrics, thresholds, run history per agent and prompt version
+Decision registry (ledger)
+Every agent decision with model, prompt version, tokens, latency, cost, confidence, evidence, deterministic checks, fallback flag and human override
+10.2 Controls
+Strict output schemas: every model response is validated against a schema; invalid output triggers bounded retry, then deterministic fallback.
+Advisory rule: for security and deployment decisions, the model is advisory unless an explicit policy grants autonomy for a defined scope.
+Confidence and escalation: decisions below the configured confidence threshold require human review.
+Model router: task complexity and risk class select the model; security decisions combine deterministic scanners with model explanation.
+Budgets: token and cost ceilings per agent, run, repository and day with graceful degradation to heuristics.
+Allow-listing: only registered models and prompt versions execute in production.
+Hallucination controls: groundedness checks require claims to reference artifacts; unsupported claims are removed or marked as hypotheses.
+10.3 AgentEval
+AgentEval runs curated datasets against each agent before any prompt, model or tool change is promoted. Metrics: accuracy, consistency across repeated runs, groundedness, safety (injection resilience), false positives, false negatives, latency and cost. Promotion requires meeting thresholds and not regressing on a protected regression set. Evaluation results are stored and linked to the prompt version in the registry.
+11. Security and Supply Chain Architecture
+11.1 Principles retained
+Scanner output is authoritative; the model may add context but cannot lower severity.
+No scanner is optional in a manner that weakens a hard gate. If a required scanner is unavailable, the stage fails closed or is recorded as not_audited with policy-defined consequence.
+Unpinned dependencies are reported as not_audited and counted in supply-chain risk.
+11.2 Security fabric
+Table 28. Security fabric layers
+Layer
+Tools
+Gate behavior
+SAST
+Bandit, Semgrep, CodeQL (where licensed)
+Severity above MAX_SECURITY_SEVERITY blocks
+SCA
+pip-audit, OSV, Grype
+Critical or high exploitable and reachable vulnerabilities block per policy
+Secrets
+Gitleaks and ORION patterns
+Any verified secret blocks; guidance generated (revoke, rotate, purge history, move to vault, re-run)
+Container
+Trivy, Hadolint, image configuration checks
+Root user, privileged mode, critical OS vulnerabilities, unsigned image per policy
+IaC
+Checkov, Conftest, kube-score
+Public data stores, open ingress, missing encryption, missing limits
+SBOM and license
+Syft; CycloneDX and SPDX
+Missing SBOM blocks production where policy requires; prohibited licenses block
+Provenance
+cosign, Sigstore, in-toto attestations
+Unsigned or unverifiable artifacts blocked for production
+DAST
+OWASP ZAP on preview or staging
+High findings block promotion
+Runtime
+Container runtime policy, anomaly signals
+Alert and incident creation; rollback by policy
+11.3 Supply chain flow
+Commit (verified author, signed where required) -> Dependency verification and lockfile check -> SBOM -> Scan ->
+Build with provenance -> Sign -> Attest -> Policy evaluation -> Deploy with verification of signature and digest
+ 
+11.4 Secrets and data protection
+Secrets reside in a secret manager in production; .env files are for development only and are never committed.
+Redaction precedes every model call, log write and memory write.
+Webhooks use dedicated HMAC secrets validated against the raw body; the GitHub token is never reused as a webhook secret.
+Data at rest uses provider-managed encryption with optional column-level encryption for sensitive artifact fields; data in transit uses TLS.
+Session cookies are secure, HTTP-only and same-site in production.
+11.5 Threat model summary
+Table 29. Principal threats and mitigations
+Threat
+Mitigation
+Malicious repository content attempting prompt injection
+Agent Input Firewall; data labelling; deterministic gates unaffected by model output
+Malicious archive submitted to submit-archive
+Sandboxed extraction and execution; size, path and symlink validation; resource limits
+Webhook forgery or replay
+HMAC validation; delivery ledger; timestamp and replay checks
+Privilege escalation through agents
+Permission manifests; sandbox; no merge or production credentials; approval for deployment
+Credential leakage through logs or artifacts
+Redaction; secret re-scan of stored artifacts; scoped keys
+Compromised dependency or build
+SBOM, provenance, signing, lockfile verification, typosquatting heuristics
+Cross-tenant data exposure
+Tenant identifiers on every row; row-level security; namespace ACL
+Denial of service
+Rate limiting, queue backpressure, budgets, circuit breakers
+12. Policy and Compliance
+12.1 Policy engine
+Policies are declarative, versioned, reviewed through pull requests and evaluated at a policy enforcement point before gates, approvals and deployments. Policies apply at organization, workspace, repository, branch and environment scope with defined precedence (most specific restrictive rule wins; a more specific scope cannot weaken a mandatory organization rule). The evaluation result, inputs and policy version are stored as the policy_evaluation artifact.
+Illustrative policy:
+policy: production-release
+deny_if: critical_vulnerabilities > 0; secrets_detected > 0; unsigned_image == true; risk_score >= 75
+require: tests == pass; sbom == present; approval.count >= 2; canary == pass; error_budget_remaining >= 20 percent
+performance: max_p95_regression_percent <= 20
+testing: minimum_coverage >= 80
+autonomy: max_level == 3
+ 
+The policy language is selected by ADR; Open Policy Agent (Rego) is the recommended candidate because of ecosystem support, with a restricted YAML front end for common rules.
+12.2 Compliance packs
+Packs map controls to evidence for SOC 2, ISO 27001, OWASP, CIS and, in later releases, PCI DSS, GDPR and HIPAA. ORION does not assert compliance; it produces control status with evidence references.
+Table 30. Compliance record
+Field
+Content
+Control
+Identifier and statement from the pack
+Evidence
+Artifact, audit or scanner references with timestamps
+Status
+Pass, fail, not applicable, evidence missing
+Owner
+Responsible role or team
+Last verified
+Timestamp of the most recent automated check
+12.3 Approval and change management
+Approval requests with approvers, quorum, sequential or parallel stages, comments and attached evidence.
+Four-eyes rule: requester cannot approve own change; production requires approvers from distinct roles.
+Expiry and escalation timers; emergency override requires two authorized actors, a reason and automatic post-incident review.
+Approvals are signed and recorded in the audit trail and Release Passport.
+13. Delivery and Reliability Engineering
+13.1 Environment promotion and release
+Releases progress through development, test, staging, canary and production. The Release Manager enforces promotion policy, records each transition and produces the Release Passport. Environment, deployment, release, artifact and rollback registries are introduced as first-class records.
+Table 31. Deployment strategies
+Strategy
+Operation
+Use
+Rolling
+Replace instances incrementally with health checks
+Low-risk changes
+Canary
+Stages such as 5, 25, 50 and 100 percent; compare against baseline at each stage
+Medium and High risk
+Blue/green
+Deploy new environment, verify, switch traffic, retain previous for rollback
+Schema-compatible high-risk changes
+Shadow
+Mirror traffic to the new version without user impact
+Performance-sensitive changes
+Feature flag
+Decouple deployment from exposure
+Incremental exposure
+13.2 Verification and automatic rollback
+After each stage ORION compares error rate, p95 latency, 5xx rate, saturation, SLO burn and optional business indicators against the pre-deployment baseline using bounded statistical tests. A rollback decision records the metrics, affected endpoints, suspected commit, confidence and the policy that authorized action. Rollback is automatic only where policy permits; otherwise it is recommended and requires approval. The existing rule of two consecutive rollback recommendations is retained as a minimum.
+13.3 SLO and error budget
+Existing SLO alerts (success below 70 percent, failure above 25 percent, blocked above 40 percent) are retained. The engine adds per-service SLOs, burn-rate alerts over multiple windows and an error budget policy: when budget remaining falls below a threshold, risky releases are frozen or require escalated approval.
+13.4 Incident Command
+Table 32. Incident lifecycle
+State
+Activities
+Detected
+Alert, anomaly or operator report creates an incident with severity P0 to P4 and correlation identifiers
+Triaged
+Log, trace and deployment correlation; affected services and blast radius; owner and responders assigned
+Investigating
+Root cause hypotheses ranked with evidence; similar past incidents retrieved from memory
+Mitigating
+Recommended mitigation, runbook proposal, rollback; actions by policy and approval
+Resolved
+Verification against SLO; timeline finalized
+Postmortem
+Generated draft with summary, impact, timeline, root cause, contributing factors, detection, response and actions; every statement linked to evidence; human review before publication
+13.5 Resilience of the platform itself
+Idempotency keys, distributed locks and orphan-run recovery on worker restart.
+Dead-letter queues, bounded retries and backpressure on queues.
+Graceful shutdown with checkpointing at stage boundaries (extending the existing resume semantics).
+Database and Redis reconnection handling; read-only degraded mode.
+Backups of database, artifacts and configuration with recovery objectives and scheduled restore tests.
+Chaos experiments only in isolated environments and only with explicit policy and approval.
+14. Observability
+Telemetry: OpenTelemetry for traces, metrics and logs; resource attributes service, deployment, commit, environment, tenant; trace_id and correlation_id propagated through HTTP, webhooks, Celery tasks, WebSocket events, Slack messages and deployments.
+Metrics: existing Prometheus series retained; new series for agent execution, token usage, cost, memory retrieval, policy evaluation, gate outcomes, risk score distribution and queue depth.
+Golden signals: latency, traffic, errors and saturation per service with dashboards in observability/grafana.
+Correlation: deployment markers on all dashboards; trace-to-log linking; alert deduplication and grouping with severity scoring.
+Agent observability: per-agent execution time, success, fallback and override rates, tokens, cost, tool calls and failures.
+15. Data Architecture
+15.1 Unified resource model
+The control plane normalizes resources across stacks without moving ownership of data. Adapters map stack-native records to a common representation; identifiers are stable and encode the source stack.
+Table 33. Unified resources
+Resource
+Key attributes
+Organization, Workspace, Project
+Identifier, name, owners, policy bindings
+Repository, Branch
+Provider, URL, default branch, criticality, owners
+Environment
+Name, type, policy set, deployment target, approvers
+Pipeline, PipelineRun, Stage
+Source stack, commit SHA, status, durations, failed stage, risk score
+Agent, AgentRun
+Manifest reference, version, inputs, outputs, cost
+Artifact
+Type, schema version, producer, hash, dependencies, retention
+Deployment, Release
+Version, strategy, status, verification, rollback reference
+Incident, Alert
+Severity, state, services, timeline, linked deployments
+Approval, Policy, Evaluation
+Request, decision, signatures, versions
+Common attributes: id (for example orion:{stack}:{type}:{native_id}), source_stack, tenant_id, repository, commit_sha where applicable, status, created_at, updated_at, correlation_id, trace_id.
+15.2 Artifact model
+Artifacts become first-class versioned objects with type, version, producer, timestamp, pipeline, commit, evidence, confidence, dependencies and retention. New artifact types in this specification include risk_assessment, blast_radius, service_graph, sbom, sast_report, sca_report, secret_report, container_report, iac_report, license_report, provenance_report, attestation, test_plan, test_history, mutation_report, coverage_report, contract_report, perf_comparison, canary_report, rollback_decision, release_passport, change_passport, policy_evaluation, approval_record, incident, rca_report, postmortem, cost_report and decision_ledger. Each type has a registered JSON schema and is added to VALID_ARTIFACT_TYPES by migration.
+15.3 Persistence rules
+Every schema change is an Alembic migration with a tested downgrade where feasible.
+Indexes are defined for status, repository, commit, created_at, correlation_id and tenant_id on high-volume tables.
+Audit and decision tables are append-only; updates are prohibited at the application and database role level.
+Retention is configured per artifact type; large bodies reside in the object store with hashes in the database.
+16. API and Integration Architecture
+16.1 API principles
+Existing v1 and stack-specific endpoints remain functional; new capabilities appear under /api/v2 on the control plane with adapters to the stacks.
+Every request and response carries X-Correlation-ID; the platform generates one when absent.
+Privileged operations enforce RBAC and policy and write audit events.
+Request and response schemas are published as OpenAPI and verified by contract tests.
+Table 34. New API families
+Family
+Representative operations
+/api/v2/pipelines
+List and search across stacks; filter by repository, branch, commit, status, stack, date, failed stage, severity, environment
+/api/v2/artifacts
+Retrieve and compare artifacts; lineage queries
+/api/v2/audit
+Search operator and agent actions across stacks
+/api/v2/risk
+Compute and retrieve risk assessments and blast radius
+/api/v2/policies
+Manage, validate (dry-run) and evaluate policies
+/api/v2/memory
+Query, write (restricted), review quarantine, delete under policy
+/api/v2/agents
+Registry, manifests, health, evaluation results
+/api/v2/releases, /deployments
+Promotion, canary control, rollback, passports
+/api/v2/incidents
+Lifecycle, timeline, RCA, postmortem
+/api/v2/search
+Global search across repositories, pipelines, artifacts, incidents and services
+/api/v2/stream
+Server-sent events and WebSocket for unified real-time updates
+16.2 Integrations
+GitHub (webhook, OAuth, commit statuses, pull requests, GitHub App for checks and comments), Slack (pipeline, SLO and incident notifications), Docker and Kubernetes, Celery and Redis, OpenTelemetry collectors, Prometheus and Grafana, container registries, Sigstore, and optional PagerDuty. Each integration is configured through environment variables or the secret manager and has a health probe shown in the unified health matrix.
+17. Identity, Access and Tenancy
+Hierarchy: Organization, Workspace, Team, Project, Repository, Environment.
+Authorization: RBAC for roles (admin, operator, approver, developer, viewer, auditor) with ABAC conditions on repository, environment, action, risk score and time. Example: developer may deploy to staging; production requires approver role and passing policy.
+Authentication: OIDC and SAML single sign-on, GitHub OAuth, MFA through the identity provider, service accounts with short-lived tokens, scoped API keys with expiry, rotation and IP restriction.
+Tenancy: tenant_id on all persistent records, row-level security in PostgreSQL, tenant-scoped caches and memory namespaces; TENANT_ISOLATION_MODE selects org or workspace isolation.
+Audit: every privileged action records actor, roles, resource, decision, policy version, correlation identifier and timestamp; exports are supported.
+18. Experience Layer
+18.1 Command Hub as Operations Console
+The Hub navigation is: Overview, Pipelines, Repositories, Services, Deployments, Releases, Security, Supply Chain, Quality, Performance, Incidents, SLO, Agents, AI Intelligence, Memory, Cost, Approvals, Policies, Artifacts, Audit, Integrations and Administration. The overview presents active pipelines, deployments, incidents, SLO health and fleet risk. Each view is backed by the control plane API; no view is delivered without backend support.
+18.2 Developer tooling
+CLI: orion analyze, test, security, risk, pipeline, deploy, incident, explain, fix; authenticated by scoped tokens; machine-readable output option.
+Pull request intelligence: a single maintained comment summarizing risk, changed scope, security, tests including flaky tests, API impact, deployment recommendation and next action, with links to artifacts.
+GitHub App: checks, annotations and re-run actions.
+Failure explanations: concise, evidence-linked explanations with one-click rerun and Auto-PR where permitted.
+Developer dashboards: quality-oriented views (failed pipelines, flaky tests, CI time) for self-improvement; not for individual performance ranking.
+19. FinOps and Cost Intelligence
+Cost is attributed per pipeline, repository, deployment, agent, model and incident using existing configuration (FINOPS_LLM_COST_PER_1K_TOKENS and FINOPS_COMPUTE_COST_PER_MINUTE) extended with measured token and runtime data. The Cost Optimization Agent recommends model downgrades for trivial tasks, caching, test selection, parallelization and right-sizing, each with estimated savings and the quality metric that must not regress as measured by AgentEval. Budgets are enforced by the Agent Runtime and surface in the Hub.
+20. Non-Functional Requirements
+Table 35. Service objectives
+Measure
+Target
+Webhook acknowledgement
+p95 below 5 seconds to 202 Accepted
+Control plane API latency (read)
+p95 below 2 seconds; p99 below 5 seconds
+Risk score computation
+p95 below 10 seconds for typical changes
+Memory retrieval
+p95 below 400 ms hybrid; below 150 ms lexical
+Control plane availability
+99.9 percent monthly
+Pipeline success rate (platform-caused failures excluded)
+At least 70 percent over rolling 20 runs (existing target)
+Failure rate / blocked rate
+At most 25 percent / at most 40 percent (investigate if exceeded)
+Duplicate webhook handling
+Zero duplicate pipeline runs per delivery identifier
+Recovery
+Defined RPO and RTO per environment; restore tested at least quarterly
+Audit completeness
+100 percent of privileged actions recorded
+Backward compatibility
+Zero unintentional breaking changes to v1 endpoints
+21. Configuration Reference
+Existing variables documented in the source material are unchanged. The following variables are introduced or formalized by this specification; defaults are conservative and features are disabled until their phase is delivered.
+Table 36. New and formalized configuration
+Variable
+Default
+Purpose
+CONTROL_PLANE_ENABLED
+false
+Enable unified control plane adapters
+EVENT_BACKEND
+redis_streams
+Event bus implementation
+RISK_ENGINE_ENABLED
+false
+Compute risk assessment per run
+RISK_WEIGHTS_JSON
+built-in
+Override component weights
+RISK_BLOCK_THRESHOLD
+75
+Composite at or above which policy may block
+POLICY_ENGINE_BACKEND
+builtin
+builtin or opa
+POLICY_ENFORCEMENT_ENABLED
+false
+Enforce policy evaluation (existing name retained)
+AGENT_RUNTIME_ENABLED
+false
+Route agents through registry and runtime
+AGENT_SANDBOX_MODE
+container
+none (development), container
+AGENT_MAX_AUTONOMY_LEVEL
+1
+Global ceiling for remediation level
+PROMPT_INJECTION_GATE_ENABLED
+true
+Agent Input Firewall (existing name retained)
+MODEL_ROUTER_ENABLED
+false
+Task-based model selection (existing name retained)
+AGENT_EVAL_GATE_ENABLED
+false
+Block promotion on evaluation failure (existing name retained)
+SBOM_ENABLED, SBOM_FORMAT
+false, cyclonedx
+SBOM generation
+REQUIRE_SIGNED_BUILDS
+false
+Require signature verification (existing name retained)
+CANARY_STAGES, CANARY_MAX_P95_MS
+5,25,50,100; 2000
+Progressive delivery (existing names retained)
+ERROR_BUDGET_FREEZE_THRESHOLD
+0.2
+Remaining budget fraction below which risky releases freeze
+OTEL_EXPORTER_OTLP_ENDPOINT
+unset
+OpenTelemetry collector
+TENANT_ISOLATION_MODE
+org
+org or workspace (existing name retained)
+INCIDENT_AUTO_DECLARE
+false
+Create incidents from alerts automatically
+Configuration is validated at startup; invalid or contradictory combinations (for example, autonomy level above policy ceiling) prevent start in production.
+22. Quality Assurance Strategy
+Table 37. Test layers
+Layer
+Coverage
+Unit
+Agents (including heuristic fallback), gate fusion, risk engine, policy evaluation, memory write and read paths, text analysis
+API contract
+OpenAPI conformance for v1 and v2; backward-compatibility suite replaying recorded v1 requests
+Integration
+Orchestrators with real PostgreSQL and Redis in containers; webhook ledger idempotency; resume and retry semantics
+Security
+Prompt injection corpus; tenant isolation tests; authorization matrix tests; secret redaction fuzzing; sandbox escape checks
+AI evaluation
+AgentEval datasets per agent; memory retrieval and groundedness suites; risk calibration on historical outcomes
+End-to-end
+Playwright operator workflows in the Hub; offline pipeline scenarios (pass, block, rollback) through run_e2e_all.ps1
+Performance
+Control plane load tests; retrieval latency; queue throughput
+Resilience
+Worker kill, Redis and database outage, duplicate delivery, partial stage failure
+Rules: existing tests MUST pass before and after each change; tests MUST NOT be disabled to obtain a passing build; each new API, agent and migration has accompanying tests; coverage of new code is reported and trends are gated.
+23. Implementation Roadmap
+The 30 recommended phases (0 to 29) are consolidated into six waves. Each wave has entry criteria, deliverables and exit criteria. Phases are not delivered in a single change; each is a series of reviewed pull requests.
+Table 38. Delivery waves
+Wave
+Name
+Source phases
+Principal deliverables
+0
+Baseline and foundations
+Phase 0
+Architecture audit, code-derived feature matrix, API contract matrix, security gap report, technical debt register, baseline test results
+1
+Control plane and intelligence
+Phases 1 to 3
+Unified resource model, pipeline and artifact explorers, correlation IDs, repository intelligence, multi-level code review, event backbone
+2
+Assurance fabric
+Phases 4 to 7
+DevSecOps fabric, SBOM and supply chain, test and performance intelligence, risk engine v1, secrets guardian
+3
+Release and reliability
+Phases 8 to 11
+Progressive delivery, OpenTelemetry and AIOps, incident center, remediation levels 0 to 4
+4
+Governance and platform
+Phases 12 to 13, 17 to 20, 24
+Policy engine, approvals, memory architecture, agent runtime and sandbox, AI governance, FinOps, enterprise identity
+5
+Experience and autonomy
+Phases 14 to 16, 21 to 23, 25 to 29
+Multimodal expansion, Kubernetes, service catalog, release center, CLI and PR bot, Hub console, resilience and DR, knowledge graph, Autopilot, unified risk
+Sequencing note. The memory architecture and agent runtime (Wave 4) are foundational for later autonomy but should have their interfaces defined in Wave 1 so that earlier features write compatible records. Policy engine interfaces likewise are defined early and populated incrementally.
+23.1 Exit criteria by wave
+Table 39. Exit criteria
+Wave
+Exit criteria
+0
+All documented capabilities classified as implemented, partial, placeholder or absent with code references; baseline test and static analysis results recorded; run_all_stacks.ps1 and run_e2e_all.ps1 verified; inconsistencies resolved or ticketed.
+1
+A pipeline from any stack can be discovered and inspected from one Hub screen; one correlation ID traces a run across services; existing stack tests remain green; no v1 endpoint broken.
+2
+Hard gates for SAST, SCA, secrets, container and SBOM operate fail-closed; risk score produced for every run with cited evidence; test selection reduces executed tests on a benchmark without missed regressions beyond the agreed tolerance.
+3
+Canary with automatic verification and rollback demonstrated end to end; incident created, correlated and a postmortem draft produced with evidence links; remediation PR created and fully verified in sandbox.
+4
+Policy changes alter gate outcomes without code change; memory retrieval meets quality and latency targets with tenant isolation tests passing; every agent registered with manifest and operating in sandbox; AgentEval gates promotion.
+5
+Operations Console covers all navigation areas with backend support; Autopilot operates in Supervised mode on a reference repository with all controls active; recovery objectives demonstrated.
+23.2 Phase instruction template
+Each implementation phase is issued with the engineering contract in Section 24 prefixed, the target phase scope, explicit acceptance criteria and a request to report exactly what was implemented, what remains and which tests passed. Phases are never combined into a single instruction.
+24. Engineering Contract and Definition of Done
+24.1 Prohibitions
+Do not rewrite the repository or replace working architecture without an ADR.
+Do not create duplicate implementations of existing shared capabilities.
+Do not present mock features as production features, and do not build user-interface features without backend support.
+Do not bypass security gates, audit logging or authorization.
+Do not allow model output to downgrade authoritative scanner results.
+Do not remove or silently change existing API contracts.
+Do not hard-code credentials or store secrets in source.
+Do not disable or weaken tests to obtain a passing build.
+Do not replace real integrations with fabricated responses.
+24.2 Obligations
+Inspect existing implementation and reuse existing agents, services, utilities and models.
+Preserve backward compatibility; use adapters and versioned contracts.
+Add migrations for every persistent change.
+Add API, agent, frontend and end-to-end tests proportionate to the feature.
+Persist a structured artifact for every autonomous decision and an audit event for every privileged action.
+Propagate correlation_id and trace_id.
+Apply RBAC and policy checks to privileged operations.
+Fail closed for security-critical decisions and provide deterministic fallback where the model is optional.
+Validate every model response against a strict schema; never treat natural-language output as the sole basis for a gate.
+Update documentation and the feature matrix; run the full test suite before and after.
+24.3 Definition of Done
+A feature is complete only when the following are present to the degree appropriate to its scope: persistence with migration, input validation, authorization, observability (metrics, logs, traces), frontend integration where user-facing, failure handling and recovery, automated tests at the relevant layers, documentation, configuration with safe defaults, and an entry in the feature matrix verified against code. An endpoint that exists, a user interface that renders or a class that is defined does not constitute completion.
+25. Risk Register
+Table 40. Programme risks
+Risk
+Likelihood
+Impact
+Mitigation
+Scope growth produces shallow features
+High
+High
+Waves, exit criteria, Definition of Done, maintainer review gates
+Documentation diverges from code
+High
+Medium
+Phase 0 audit; code-derived feature matrix updated by CI check
+Breaking v1 contracts
+Medium
+High
+Contract tests, adapters, replay suite
+Model errors influence gates
+Medium
+High
+Deterministic gates, advisory rule, schema validation, AgentEval
+Prompt injection or memory poisoning
+Medium
+High
+Input firewall, trust levels, quarantine, sandbox
+Cost overrun from LLM or compute
+Medium
+Medium
+Budgets, router, caching, FinOps visibility
+Operational complexity of three stacks plus control plane
+High
+Medium
+Adapters, unified health, runbooks, staged enablement via flags
+Autonomy causes production harm
+Low
+Critical
+Level ceilings, time-boxed grants, approvals, automatic rollback, audit
+Tenant data leakage
+Low
+Critical
+Row-level security, ACLs, isolation tests, key separation
+Third-party tool licensing or availability
+Medium
+Medium
+Open-source defaults, adapter interfaces, fail-closed behavior with documented exceptions
+26. Success Metrics
+Table 41. Programme key performance indicators
+Metric
+Definition and target direction
+Change failure rate
+Share of deployments causing rollback or incident; decreasing
+Mean time to recovery
+Detection to resolution; decreasing
+Lead time for changes
+Commit to production; decreasing without rising failure rate
+Deployment frequency
+Production deployments per service per period; increasing
+Mean CI duration
+Pipeline duration with test selection; decreasing
+Risk calibration
+Agreement between predicted band and observed outcome; improving
+Gate escape rate
+Defects reaching production that a gate should have caught; decreasing
+Patch acceptance rate
+Auto-PRs merged without substantive modification; increasing with stable defect rate
+Agent groundedness
+Share of claims supported by evidence; at or above threshold
+Cost per pipeline
+LLM plus compute per run; decreasing at constant quality
+Evidence coverage
+Share of incidents with complete evidence chain; increasing
+27. Deferred and Excluded Items
+Managed cloud SaaS hosting and billing.
+Multi-cloud abstraction beyond Docker, Kubernetes and Terraform adapters until Wave 5.
+Dedicated graph database and standalone vector database until PostgreSQL-based storage proves insufficient by measurement.
+Autonomous remediation level 6 beyond named runbooks.
+Blockchain or distributed-ledger audit.
+General-purpose conversational assistant unrelated to delivery and reliability workflows.
+Appendix A. Glossary
+Term
+Definition
+ABAC
+Attribute-based access control
+Artifact
+Structured, persisted output of an agent or stage
+Blast radius
+Estimated set of services, data and users affected by a change
+Correlation ID
+Identifier propagated across all components for a single logical operation
+Evidence Graph
+Graph linking change, verification, deployment, telemetry and incident records
+Gate fusion
+Merging code, security, QA and stress results into a single verdict and risk value
+Hard gate
+Deterministic rule that cannot be overridden by a model
+Memory Gateway
+Single governed interface to all memory stores
+Postmortem
+Evidence-linked retrospective of an incident
+Release Passport
+Consolidated record of evidence for a production release
+SBOM
+Software bill of materials
+SLO, error budget
+Service level objective; allowable unreliability within a window
+Appendix B. Mapping of Source Phases to Waves
+Source phases
+Wave and notes
+0
+Wave 0
+1 Unified control plane; 2 Repository intelligence; 3 Advanced code review
+Wave 1
+4 DevSecOps; 5 Supply chain; 6 Test intelligence; 7 Performance
+Wave 2; risk engine v1 added here because it consumes these outputs
+8 Progressive delivery; 9 AIOps; 10 Incident center; 11 Remediation
+Wave 3
+12 Policy; 13 Approvals; 17 RAG and memory; 18 Agent mesh; 19 AI governance; 20 FinOps; 24 Enterprise security
+Wave 4; interfaces defined in Wave 1
+14 Multimodal; 15 Kubernetes; 16 Service catalog; 21 Release intelligence; 22 Developer experience; 23 Advanced Hub; 25 Reliability; 26 Disaster recovery; 27 Knowledge graph; 28 Autopilot; 29 Unified risk
+Wave 5; release passport and CLI foundations may begin earlier
+Appendix C. Source Document Reconciliation
+The following observations arise from comparing the supplied documents. They are to be resolved in Phase 0.
+No.
+Observation
+Action
+1
+The README states that Phases 1 to 5 of an earlier ORION roadmap are fully implemented and cites an agents.md section 69 and a 71-section master reference; the supplied agents.md contains 23 sections.
+Verify against code; align documentation to the verified state.
+2
+ORION is described as a nine-stage pipeline, while the stage table lists seven agent stages plus ingestion and monitoring.
+Define the canonical stage list and use it consistently.
+3
+ORION default APP_PORT is 8000 standalone, 8001 under run_all_stacks.ps1; DevOps Platform 8000 under Compose, 8002 under the launcher.
+Publish a single port matrix in config/stacks.json and documentation.
+4
+Variants of the README differ (for example, run_local.ps1 for ORION and additional environment variables appear in one but not the other).
+Maintain one README; generate configuration tables from source.
+5
+Roadmap items already listed as implemented in the README (progressive delivery, SLO intelligence, policy, router, FinOps variables) also appear as future phases.
+Classify each as implemented, partial or absent in the feature matrix before planning.
+6
+Canonical security uses simulated scanners while the principle states scanner output is authoritative.
+Implement real scanners in the canonical stack or document the limitation prominently.
+Appendix D. Reference Technology Set
+Area
+Technologies
+Runtime
+Python 3.11 or later, FastAPI, Celery, Alembic, Node 20 or later, React
+Data
+PostgreSQL with pgvector, Redis (cache and streams), object storage
+Security
+Bandit, Semgrep, pip-audit, OSV, Grype, Trivy, Gitleaks, Syft, Hadolint, Checkov, OWASP ZAP, cosign, Sigstore, in-toto
+Policy
+Open Policy Agent and Conftest
+Observability
+OpenTelemetry, Prometheus, Grafana, Loki or ELK, Jaeger or Tempo
+Testing
+pytest, Playwright, Locust, mutation testing tools
+Delivery
+Docker, Kubernetes, Helm, Terraform, GitHub Actions

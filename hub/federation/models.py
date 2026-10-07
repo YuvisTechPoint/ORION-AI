@@ -129,4 +129,6 @@ class OperationsCenterReport(BaseModel):
     policy_panel: dict[str, Any] = Field(default_factory=dict)
     security_panel: dict[str, Any] = Field(default_factory=dict)
     performance_panel: dict[str, Any] = Field(default_factory=dict)
+    memory_panel: dict[str, Any] = Field(default_factory=dict)
+    platform_events: dict[str, Any] = Field(default_factory=dict)
     summary: str = ""

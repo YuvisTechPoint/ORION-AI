@@ -576,6 +576,26 @@ Verify:  .\run_production.ps1 -SkipInstall  |  .\run_e2e_all.ps1 -Offline
 
 ---
 
+## ORION-ARCH-001 — Wave 1 foundations (Memory + Events) · **Done**
+
+Per `docs/ORION_Architecture_and_Implementation_Specification.docx` — interfaces defined early for Wave 4 memory mesh.
+
+| Item | Status | Deliverable |
+|------|--------|-------------|
+| Memory Gateway (MEM-01–04) | **Done** | `shared/memory_gateway/`, ADR `docs/adr/001-memory-gateway.md` |
+| Platform event backbone | **Done** | `shared/event_bus/`, ADR `docs/adr/002-event-backbone.md` |
+| ORION `/api/v2/memory`, `/api/v2/events` | **Done** | `memory_v2.py`, `events_v2.py` |
+| Pipeline hooks (started/completed + episodic) | **Done** | `orchestrator.py` |
+| Canonical gateway client | **Done** | `backend/services/memory_gateway_client.py` |
+| Canonical episodic extractor + hooks | **Done** | `memory_extractor.py`, `pipeline_terminal_hooks.py` |
+| Hub platform events federation | **Done** | `hub/federation/platform_events.py`, ops center UI |
+| Wave tracker | **Done** | `docs/audit/ORION_SPEC_WAVE_STATUS.md` |
+| Tests | **Done** | ORION + canonical memory/event tests |
+
+**Next (Wave 4):** Postgres/pgvector store, Hub live Redis SSE subscriber.
+
+---
+
 ## Definition of done (per engineering contract)
 
 Each backlog item closes only when: persistence (if needed), validation, auth, tests, docs, and UI/API integration match the feature class — not when a mock endpoint exists.

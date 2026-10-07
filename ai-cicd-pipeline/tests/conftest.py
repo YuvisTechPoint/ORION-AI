@@ -21,6 +21,8 @@ os.environ.update(
         "PIPELINE_EXECUTOR": "inline",
         "DEPLOY_MODE": "docker",
         "PIPELINE_WORKDIR": str(Path(__file__).parent / ".work"),
+        "MEMORY_SQLITE_PATH": str(Path(__file__).parent / ".work" / "test-memory.db"),
+        "EVENT_BUS_BACKEND": "memory",
     }
 )
 

@@ -205,7 +205,9 @@
 | DevOps RAG | ❌ | partial | ❌ | Partial | keyword/heuristic, no pgvector |
 | Prompt injection firewall | ❌ | ✅ | ❌ | Production |
 | Agent mesh / PlannerAgent | ❌ | ❌ | ❌ | Missing |
-| Organizational memory (pgvector) | ❌ | ❌ | ❌ | Missing |
+| Memory Gateway (governed L1–L6 API) | partial | ✅ | ❌ | Wave 1 | SQLite store; `/api/v2/memory`; episodic on terminal pipeline (canonical + ORION) |
+| Platform event backbone | partial | ✅ | ❌ | Wave 1 | Redis Streams + in-memory; Hub `/control-plane/platform-events` |
+| Organizational memory (pgvector) | ❌ | partial | ❌ | Wave 4 | L3 semantic retrieval not yet on pgvector |
 
 ---
 

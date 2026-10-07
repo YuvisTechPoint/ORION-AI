@@ -80,6 +80,14 @@ def summarize_artifact(artifact_type: str, content: Any) -> str:
         src = ", ".join(sources) if sources else "dependency manifests"
         return f"CycloneDX SBOM: {count} component(s) from {src}."
 
+    if artifact_type == "dast_report":
+        gate = content.get("gate_verdict") or (content.get("gates") or {}).get("gate_verdict")
+        verdict = content.get("verdict") or "?"
+        scanner = content.get("scanner") or "unknown"
+        count = int(content.get("finding_count") or len(content.get("findings") or []))
+        target = content.get("target_url") or "staging"
+        return _clip(f"DAST {verdict} ({scanner}): {count} finding(s) on {target}" + (f"; gate {gate}" if gate else ""))
+
     if artifact_type == "supply_chain_report":
         posture = content.get("posture") or "unknown"
         locks = len(content.get("lockfiles") or [])

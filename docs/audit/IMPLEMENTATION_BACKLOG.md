@@ -104,11 +104,11 @@
 | Gitleaks | **Done** | `run_gitleaks()` replaces heuristic secrets scan when installed |
 | Trivy | **Done** | `run_trivy_config()` replaces heuristic container scan when installed |
 | Checkov | **Done** | `run_checkov()` replaces heuristic IaC scan when installed |
-| ZAP DAST | **Missing** | Staging-only agent backlog |
+| ZAP DAST | **Done** | `dast_report` artifact + `run_zap_baseline()` + heuristic fallback |
 
 **Rule preserved:** LLM advisory only; scanners authoritative; heuristic fallback when tools not on PATH.
 
-**Config:** `SECURITY_*_ENABLED`, `GITLEAKS_PATH`, `TRIVY_PATH`, `CHECKOV_PATH`, `SEMGREP_PATH`.
+**Config:** `SECURITY_*_ENABLED`, `GITLEAKS_PATH`, `TRIVY_PATH`, `CHECKOV_PATH`, `SEMGREP_PATH`, `ZAP_PATH`, `DAST_GATE_ENABLED`.
 
 ---
 
@@ -120,7 +120,7 @@
 | Supply chain report artifact | **Done** | `supply_chain_report` in phase1 enrichment |
 | Lockfile verification | **Done** | Fingerprints + missing lock warnings |
 | CVE mapping | **Partial** | CVE refs from `security_scan` |
-| EPSS | **Missing** | Backlog |
+| EPSS | **Done** | `enrich_cve_references()` via FIRST.org API + heuristic fallback |
 | Syft SBOM | **Done** | `run_syft()` merges CycloneDX when installed (`SBOM_SYFT_ENABLED`) |
 | Sign + attest pipeline | **Partial** | Mock signed builds in phase4 |
 

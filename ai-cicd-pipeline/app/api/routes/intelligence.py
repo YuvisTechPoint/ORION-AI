@@ -70,6 +70,7 @@ from app.utils.observability_intelligence import build_observability_intelligenc
 from app.utils.multimodal_intelligence import build_multimodal_intelligence_report, build_route_report
 from app.utils.multimodal_registry import build_multimodal_catalog_report
 from app.utils.code_review_intelligence import build_code_review_intelligence_report
+from app.utils.dast_scan import build_dast_report, evaluate_dast_gates
 from app.utils.performance_intelligence import build_performance_intelligence_report, resolve_stress_profile
 
 router = APIRouter(prefix="/intelligence", tags=["Intelligence"])
@@ -102,6 +103,11 @@ class PerformanceIntelRequest(BaseModel):
     stress_report: dict[str, Any] | None = None
     stress_profile: str | None = None
     use_llm: bool = Field(default=False)
+
+
+class DastIntelRequest(BaseModel):
+    target_url: str | None = None
+    pipeline_run_id: str | None = None
 
 
 class CodeReviewIntelRequest(BaseModel):
@@ -398,6 +404,8 @@ async def intelligence_dashboard(
             "test_intelligence": True,
             "performance_intelligence": True,
             "code_review_intelligence": True,
+            "dast_scan": settings.security_zap_enabled,
+            "epss_enrichment": settings.epss_enabled,
             "sbom_syft": settings.sbom_syft_enabled,
             "deployment_intelligence": True,
             "observability_intelligence": True,
@@ -593,6 +601,43 @@ async def analyze_test_intelligence(
     finally:
         if cleanup_run_id is not None:
             background_tasks.add_task(GitService().cleanup_repo, cleanup_run_id)
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "persisted": pipeline_run_id is not None,
+        "report": report,
+    }
+
+
+@router.post("/dast")
+async def analyze_dast_intelligence(
+    body: DastIntelRequest,
+    db: AsyncSession = Depends(get_db),
+    _: dict = Depends(optional_auth),
+) -> dict[str, Any]:
+    """Staging DAST scan — OWASP ZAP baseline when installed, heuristic probe otherwise."""
+    pipeline_run_id: uuid.UUID | None = None
+    if body.pipeline_run_id:
+        try:
+            pipeline_run_id = uuid.UUID(body.pipeline_run_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Invalid pipeline_run_id") from exc
+        if await db.get(PipelineRun, pipeline_run_id) is None:
+            raise HTTPException(status_code=404, detail="Pipeline run not found")
+
+    report = build_dast_report(body.target_url)
+    report["gates"] = evaluate_dast_gates(report)
+    report["gate_verdict"] = report["gates"]["gate_verdict"]
+
+    if pipeline_run_id:
+        db.add(
+            PipelineArtifact(
+                pipeline_run_id=pipeline_run_id,
+                artifact_type="dast_report",
+                content=report,
+            )
+        )
+        await db.commit()
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),

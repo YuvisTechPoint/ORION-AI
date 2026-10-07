@@ -501,6 +501,22 @@ def cmd_repo(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_dast(args: argparse.Namespace) -> int:
+    payload: dict[str, Any] = {}
+    if args.run_id:
+        payload["pipeline_run_id"] = args.run_id
+    if args.target_url:
+        payload["target_url"] = args.target_url
+    resp = api_request("POST", "/api/v1/intelligence/dast", json=payload)
+    if resp.status_code != 200:
+        emit(args, {"ok": False, "error": _json_or_text(resp), "status_code": resp.status_code})
+        return 1
+    report = resp.json().get("report") or {}
+    emit(args, {"ok": True, "report": report})
+    gate = report.get("gate_verdict")
+    return 1 if gate == "fail" else 0
+
+
 def cmd_code_review(args: argparse.Namespace) -> int:
     payload: dict[str, Any] = {}
     if args.run_id:
@@ -1860,6 +1876,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("ref", nargs="?", default="HEAD", help="git ref for optional diff impact (default HEAD)")
     p.add_argument("--no-llm", action="store_true", help="heuristic-only analysis")
     p.set_defaults(func=cmd_repo)
+
+    p = sub.add_parser("dast", parents=[common], help="staging DAST scan (ZAP baseline or heuristic probe)")
+    p.add_argument("--run-id", help="persist dast_report on an existing pipeline run")
+    p.add_argument("--target-url", help="override STAGING_URL target")
+    p.set_defaults(func=cmd_dast)
 
     p = sub.add_parser(
         "code-review",

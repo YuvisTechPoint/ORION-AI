@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,7 @@ def _tool_path(name: str) -> str | None:
         "checkov": settings.checkov_path,
         "semgrep": settings.semgrep_path,
         "syft": settings.syft_path,
+        "zap": settings.zap_path,
     }.get(name, "")
     if override and override.strip():
         return override.strip()
@@ -408,4 +410,66 @@ def run_syft(repo_path: str) -> dict[str, Any] | None:
         "components": normalized[:500],
         "bomFormat": data.get("bomFormat") or "CycloneDX",
         "specVersion": data.get("specVersion") or "1.5",
+    }
+
+
+def _resolve_zap_baseline() -> str | None:
+    override = (settings.zap_path or "").strip()
+    if override:
+        return override
+    for candidate in ("zap-baseline.py", "zap-baseline", "zap.sh"):
+        found = shutil.which(candidate)
+        if found:
+            return found
+    return None
+
+
+def run_zap_baseline(target_url: str) -> dict[str, Any] | None:
+    """Run OWASP ZAP baseline scan against staging URL when enabled."""
+    if not settings.security_zap_enabled:
+        return None
+    binary = _resolve_zap_baseline()
+    if not binary:
+        return {
+            "tool": "zap",
+            "status": "skipped",
+            "reason": "zap-baseline not installed",
+            "analysis_mode": "heuristic",
+        }
+
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+        report_path = tmp.name
+
+    cmd = [binary, "-t", target_url, "-J", report_path, "-I"]
+    try:
+        code, stdout, stderr = _run_cmd(cmd, timeout=settings.zap_timeout_seconds)
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        Path(report_path).unlink(missing_ok=True)
+        return {"tool": "zap", "status": "failed", "reason": str(exc), "analysis_mode": "heuristic"}
+
+    raw = ""
+    try:
+        raw = Path(report_path).read_text(encoding="utf-8", errors="replace")
+    finally:
+        Path(report_path).unlink(missing_ok=True)
+
+    if not raw.strip():
+        return {
+            "tool": "zap",
+            "status": "failed",
+            "reason": (stderr or stdout or f"exit {code}")[:500],
+            "analysis_mode": "heuristic",
+        }
+
+    try:
+        report = json.loads(raw)
+    except json.JSONDecodeError:
+        return {"tool": "zap", "status": "failed", "reason": "invalid ZAP JSON report", "analysis_mode": "heuristic"}
+
+    return {
+        "tool": "zap",
+        "status": "ok",
+        "analysis_mode": "zap",
+        "report": report,
+        "exit_code": code,
     }

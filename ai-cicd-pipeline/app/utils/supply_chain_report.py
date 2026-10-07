@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from app.agents.security_agent import split_requirements
+from app.utils.epss import enrich_cve_references
 
 _LOCKFILES = (
     "poetry.lock",
@@ -83,15 +84,23 @@ def build_supply_chain_report(
     if (iac_scan or {}).get("critical_count", 0):
         issues.append("critical IaC policy failures")
 
+    cve_enriched, epss_meta = enrich_cve_references(cve_findings[:30])
+    if epss_meta.get("high_exploit_probability_count"):
+        issues.append(
+            f"{epss_meta['high_exploit_probability_count']} CVE(s) with EPSS >= 0.5 exploit probability"
+        )
+
     component_count = int(((sbom or {}).get("stats") or {}).get("component_count") or 0)
     posture = "pass"
-    if issues or cve_findings:
+    if issues or cve_enriched:
         posture = "warn" if not any("critical" in i for i in issues) else "fail"
 
     summary = (
         f"Supply chain {posture}: {len(lockfiles)} lockfile(s), "
-        f"{component_count} SBOM component(s), {len(cve_findings)} CVE reference(s)."
+        f"{component_count} SBOM component(s), {len(cve_enriched)} CVE reference(s)."
     )
+    if epss_meta.get("epss_enabled"):
+        summary += f" EPSS source={epss_meta.get('epss_source')}."
     if issues:
         summary += f" Issues: {'; '.join(issues[:3])}."
 
@@ -100,10 +109,11 @@ def build_supply_chain_report(
         "lockfiles": lockfiles,
         "unpinned_requirements": unpinned[:30],
         "sbom_component_count": component_count,
-        "cve_references": cve_findings[:30],
+        "cve_references": cve_enriched,
         "scanner_posture": scanners,
         "issues": issues,
-        "epss_enabled": False,
+        "epss": epss_meta,
+        "epss_enabled": bool(epss_meta.get("epss_enabled")),
         "summary": summary,
         "analysis_mode": "heuristic",
     }

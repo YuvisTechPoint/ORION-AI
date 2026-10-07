@@ -42,6 +42,7 @@ from app.services.observability_enrichment import persist_observability_intellig
 from app.services.remediation_enrichment import persist_remediation_intelligence
 from app.services.multimodal_enrichment import persist_multimodal_intelligence
 from app.services.code_review_enrichment import persist_code_review_intelligence
+from app.services.dast_enrichment import persist_dast_report
 from app.services.performance_enrichment import persist_performance_intelligence
 from app.services.phase2_enrichment import run_phase2_enrichment
 from app.services.phase3_enrichment import run_phase3_observability
@@ -580,6 +581,28 @@ class PipelineOrchestrator:
                             "performance_intelligence",
                         )
                         return
+                    dast = await persist_dast_report(
+                        db,
+                        run,
+                        skip_if_present=resume,
+                        existing=await _load_artifact_map(db, run.id),
+                    )
+                    if settings.dast_gate_enabled and dast.get("gate_verdict") == "fail":
+                        await self._handle_block(
+                            db,
+                            run,
+                            gh,
+                            "blocked_dast",
+                            {
+                                "summary": dast.get("summary"),
+                                "violations": (dast.get("gates") or {}).get("violations", [])[:5],
+                            },
+                            "dast_scan",
+                        )
+                        return
+                    if dast.get("verdict") == "warn":
+                        run.has_warnings = True
+                        await db.commit()
                 else:
                     stress = artifacts.get("stress_report") or {}
                     if stress and not stress.get("skipped"):

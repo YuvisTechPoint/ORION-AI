@@ -39,6 +39,7 @@ VALID_ARTIFACT_TYPES = frozenset(
         "sbom",
         "supply_chain_report",
         "secrets_scan",
+        "dast_report",
         "container_security_scan",
         "iac_security_scan",
         "test_intelligence",

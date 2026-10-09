@@ -186,6 +186,8 @@ Today ORION **automates the full software delivery loop** from code change to de
 | **SLO intelligence + Slack** | Success/failure/blocked rates with deduped alerts | All stacks |
 | **Hybrid file retriever** | Keyword + fuzzy path scoring for LLM context | Canonical |
 | **SQLite agent memory** | Last N prompt/response pairs per agent scope | Canonical |
+| **Memory Gateway (ORION-ARCH-001)** | Governed L1–L6 write/read API, redaction, episodic pipeline summaries | ORION + Canonical (shared `shared/memory_gateway/`) |
+| **Platform event backbone** | `pipeline.started` / `pipeline.completed` domain events (Redis Streams + in-memory) | ORION + Canonical; Hub federates recent events |
 | **Correlated log monitoring** | Log type + gate verdict fusion hints | All stacks |
 | **Multimodal analysis suite** | 6 on-demand agents (logs, git, payment, triage, …) | ORION (+ proxy) |
 | **Prometheus metrics** | HTTP counters, pipeline counters, webhook counters | ORION, Canonical |
@@ -324,6 +326,10 @@ Terminal status: deployed | approved | blocked_* | rejected | failed | rolled_ba
 | SLO alerts | `backend/core/slo_alerts.py` | `app/utils/slo_alerts.py` | `app/utils/slo_alerts.py` |
 | SLO Slack notify | `backend/core/slo_alert_notifier.py` | `app/services/slo_alert_notifier.py` | `app/services/slo_alert_notifier.py` |
 | Text analysis | `backend/core/text_analysis.py` | `app/utils/text_analysis.py` | via `/api/tools/text-*` |
+| Security scanners | `shared/security_scanners.py` (via `backend/core/security_scanners.py`) | SecurityAgent + shared | DevOps SecurityAgent + shared |
+| Memory Gateway | `services/memory_gateway_client.py` | `services/memory_gateway_service.py` | — |
+| Platform events | `services/platform_events.py` | `services/platform_events.py` | — |
+| Rate limit (Redis) | `shared/rate_limit_redis.py` | middleware | middleware |
 
 ---
 
@@ -469,7 +475,7 @@ LLM-driven via `LLMClient`; optional memory + retriever injection from orchestra
 | Agent | File | Role | Notes |
 |-------|------|------|-------|
 | CodeAnalysisAgent | `agents/code_analysis.py` | LLM code review | Artifact: `code_analysis` |
-| SecurityAgent | `agents/security.py` | LLM SAST-style review | **Simulated** scanners (not bandit); artifact: `security` |
+| SecurityAgent | `agents/security.py` | bandit + pip-audit + LLM enrichment | `SECURITY_SCANNERS_ENABLED`; scanner severity authoritative; artifact: `security` |
 | PipelineAgent | `agents/pipeline.py` | Stage transition decisions | Approval / gate LLM |
 | StressAgent | `agents/stress.py` | Heuristic load gate | Artifact: `stress` |
 | DeploymentAgent | `agents/deployment.py` | Deploy decision JSON | Artifact: `deployment` |
@@ -477,7 +483,9 @@ LLM-driven via `LLMClient`; optional memory + retriever injection from orchestra
 | FullScanOrchestrator | `agents/full_scan_orchestrator.py` | Sequential scan | `full_scan_combined` |
 
 **Memory & retrieval (canonical only):**
-- `services/memory_store.py` — `SQLiteAgentMemoryStore` / `InMemoryAgentMemoryStore`
+- `services/memory_store.py` — `SQLiteAgentMemoryStore` / `InMemoryAgentMemoryStore` (per-agent turn history)
+- `services/memory_gateway_client.py` — shared **Memory Gateway** (L2 episodic on terminal pipeline; see §38.3)
+- `services/pipeline_terminal_hooks.py` — idempotent `pipeline.completed` + episodic extract on terminal status
 - `services/retriever.py` — `HybridFileRetriever`, `FileChunkRetriever`, `NoOpRetriever`
 
 ---
@@ -579,6 +587,21 @@ Status `blocked_with_prs_sent` when fix PRs are opened and pipeline waits for me
 
 Auth: `?api_key=` when `API_REQUIRE_AUTH=true` (ORION/devops).
 
+### 7.6 Platform events & Memory Gateway hooks
+
+Distinct from per-pipeline **WebSocket** events (§7.5 / §24): cross-plane **platform events** use `shared/event_bus/` (`PlatformEvent` envelope, stream key `orion:platform:events`).
+
+| Hook | ORION | Canonical |
+|------|-------|-----------|
+| `pipeline.started` | `PipelineOrchestrator.execute_pipeline` (non-resume) | `publish_pipeline_started()` on submit |
+| `pipeline.completed` | Terminal `_set_status` | `run_terminal_hooks()` on terminal status |
+| L2 episodic memory | `extract_pipeline_episodic_memory()` | `extract_canonical_episodic_memory()` |
+| Agent context injection | `BaseAgent._inject_memory_prefix()` when `MEMORY_GATEWAY_ENABLED` | — (gateway read via client) |
+
+**Rules:** Memory context is **advisory only** (MEM-04) — never an input to gate fusion. Writes pass secret redaction and injection quarantine (MEM-03).
+
+**ADRs:** `docs/adr/001-memory-gateway.md`, `docs/adr/002-event-backbone.md` · **Wave tracker:** `docs/audit/ORION_SPEC_WAVE_STATUS.md`
+
 ---
 
 ## 8. API reference (unified)
@@ -624,6 +647,15 @@ Auth: `?api_key=` when `API_REQUIRE_AUTH=true` (ORION/devops).
 
 Headers: `X-ORION-API-Key`, `X-Hub-Signature-256`, `X-GitHub-Delivery`, `X-GitHub-Event`
 
+**Prefix:** `/api/v2` (ORION-ARCH-001 Wave 1 foundations)
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| GET | `/memory/health` | open | Gateway enabled/backend/SQLite path |
+| POST | `/memory/records` | optional | Governed memory write |
+| POST | `/memory/context` | optional | Packed advisory context for repo namespace |
+| GET | `/events/recent` | optional | Recent platform events (`limit`, `event_type`) |
+
 ### 8.3 Canonical (`backend/main.py`)
 
 | Method | Path | Auth | Purpose |
@@ -665,6 +697,23 @@ Headers: `X-ORION-API-Key`, `X-Hub-Signature-256`, `X-GitHub-Delivery`, `X-GitHu
 | POST | `/api/multimodal/analyze` | optional | ORION proxy |
 | POST | `/api/tools/text-*` | open | Text tools |
 
+### 8.5 Command Hub BFF (`hub/server.py`)
+
+**Prefix:** `/api/v1/control-plane` (federation; propagates `X-Correlation-ID`)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/health` | Hub + stack health matrix |
+| GET | `/pipelines` | Federated pipeline list |
+| GET | `/operations` | Operations Center (SLO, fleet, policy/security/performance/**memory** panels, **platform_events**) |
+| GET | `/platform-events` | Proxy ORION `GET /api/v2/events/recent` |
+| GET | `/intelligence` | Fan-out stack intelligence dashboards |
+| GET | `/fleet` | ORION fleet intelligence |
+| GET | `/pipelines/{stack:native_id}/timeline` | Unified timeline |
+| POST | `/pipelines/{stack:native_id}/retry` | Federated retry |
+| POST | `/pipelines/{stack:native_id}/resume` | Federated resume |
+| POST | `/pipelines/{stack:native_id}/cancel` | Federated cancel |
+
 ---
 
 ## 9. Cross-stack intelligence & gate fusion
@@ -674,7 +723,7 @@ Headers: `X-ORION-API-Key`, `X-Hub-Signature-256`, `X-GitHub-Delivery`, `X-GitHu
 | Stack | Endpoint | Response highlights |
 |-------|----------|---------------------|
 | Canonical | `GET /api/v1/intelligence/dashboard` | pass_rate, top_blockers, SLO, alerts, retriever/memory flags |
-| ORION | `GET /api/v1/intelligence/dashboard` | deploy_mode, executor, llm_mode, auto_pr capability |
+| ORION | `GET /api/v1/intelligence/dashboard` | deploy_mode, executor, llm_mode, auto_pr, **memory_gateway**, **platform_event_bus** |
 | DevOps | `GET /api/intelligence/dashboard` | redis_available, approval_agent, ORION proxy flag |
 
 **Command Hub** (`hub/hub.js`) polls all three every few seconds and renders SLO success, readiness, gate blockers, alert banner.
@@ -998,7 +1047,7 @@ curl -s -X POST http://localhost:8001/api/v1/tools/text-analyze \
 
 | Surface | Path | URL | Features |
 |---------|------|-----|----------|
-| **Command Hub** | `hub/` | `:5180` | Stack cards, health/ready probes, intelligence panel, cross-links |
+| **Command Hub** | `hub/` | `:5180` | Stack cards, health/ready probes, intelligence panel, **control-plane BFF**, Operations Center (platform events + memory telemetry) |
 | **Canonical console** | `frontend/` | `:5173` | `#/pipeline`, `#/intelligence`, `#/operations`; NavHub bar |
 | **ORION dashboard** | `ai-cicd-pipeline/frontend/` | `:8001/ui/` | 9-stage timeline, WebSocket logs, multimodal modals, retry/cancel/resume |
 | **DevOps UI** | `devops-platform/frontend/` | `:3000` (fallback `:3001`/`:3002`) | Pipeline view, WS hook, multimodal via ORION proxy |
@@ -1026,6 +1075,10 @@ If `:3000` shows a non-ORION app, stop that process or read the launcher banner 
 | `GITHUB_TOKEN` | Clone, statuses, Auto-PR |
 | `API_REQUIRE_AUTH` | Protect pipeline + tools APIs |
 | `AUTH_API_KEYS_JSON` | Multi-key RBAC map |
+| `MEMORY_GATEWAY_ENABLED` | Governed memory API (default `true`) |
+| `MEMORY_SQLITE_PATH` | Wave 1 memory store path (`.local/orion-memory.db`) |
+| `EVENT_BUS_ENABLED` | Platform domain events (default `true`) |
+| `EVENT_BUS_BACKEND` | `auto` · `memory` · `redis` |
 | `APP_ENV` | `production` enables fail-closed auth + startup validation |
 | `PRODUCTION_LOCAL_SIM` | `true` — SQLite allowed in production mode (local sim only) |
 
@@ -1054,6 +1107,17 @@ DEPLOYMENT_MODEL=claude-sonnet-4-20250514
 MONITORING_MODEL=claude-sonnet-4-20250514
 ```
 
+Memory Gateway + platform events (Wave 1):
+
+```
+MEMORY_GATEWAY_ENABLED=true
+MEMORY_BACKEND=sqlite
+MEMORY_SQLITE_PATH=.local/orion-memory.db
+MEMORY_QUARANTINE_ENABLED=true
+EVENT_BUS_ENABLED=true
+EVENT_BUS_BACKEND=auto
+```
+
 ### 16.3 Canonical-specific
 
 | Variable | Purpose |
@@ -1066,6 +1130,8 @@ MONITORING_MODEL=claude-sonnet-4-20250514
 | `AUTO_REDEPLOY_ON_BLOCKED` | Auto-remediation path |
 | `PIPELINE_EXECUTOR` | Queue backend selection |
 | `MULTIMODAL_*` | Auth, size limits, timeouts |
+| `MEMORY_GATEWAY_*`, `EVENT_BUS_*` | Same semantics as ORION (shared gateway SQLite path) |
+| `SECURITY_SCANNERS_ENABLED` | bandit + pip-audit in full scan |
 
 ### 16.4 DevOps-specific
 
@@ -1154,7 +1220,9 @@ Process metadata: `.local_stacks.json` / `.local_processes.json` (gitignored). P
 | Capability | Canonical | ORION CI/CD | DevOps Platform |
 |------------|-----------|-------------|-----------------|
 | Pipeline orchestration | ✅ submit/archive/GitHub | ✅ 9-stage webhook | ✅ Celery orchestrator |
-| Real security scanners | LLM simulated | ✅ bandit + pip-audit | LLM agent |
+| Real security scanners | ✅ bandit + pip-audit (shared) | ✅ bandit + pip-audit + semgrep hooks | ✅ bandit + pip-audit (shared) |
+| Memory Gateway (Wave 1) | ✅ episodic + client | ✅ `/api/v2/memory` + agent inject | — |
+| Platform event backbone | ✅ publish | ✅ publish + `/api/v2/events` | — |
 | QA real / simulated | ✅ `QA_MODE` | ✅ pytest + simulated | ✅ pytest skip msg |
 | Stress testing | ✅ simulated/heuristic | ✅ Locust | ✅ smoke |
 | Deploy without Docker | ✅ simulate | ✅ `DEPLOY_MODE` | ✅ `DEPLOY_MODE` |
@@ -1170,7 +1238,7 @@ Process metadata: `.local_stacks.json` / `.local_processes.json` (gitignored). P
 | Rate limiting | ✅ | ✅ | ✅ |
 | Multi-key RBAC | ✅ | ✅ | ✅ |
 | Hybrid retriever | ✅ | — | — |
-| Agent memory | ✅ SQLite | — | — |
+| Agent memory | ✅ SQLite turns | ✅ agent memory + gateway | — |
 | Auto-PR (full) | ✅ | ✅ | metadata only |
 | Multimodal agents | ✅ native | ✅ native | ✅ ORION proxy |
 | Prometheus `/metrics` | ✅ | ✅ | ✅ |
@@ -1272,6 +1340,10 @@ Extend `submit_code()` stage block; persist artifact; call `fuse_stage_results()
 | Grafana import | `observability/grafana/README.md` |
 | **Production runbook** | `docs/PRODUCTION_RUNBOOK.md` |
 | Implementation backlog | `docs/audit/IMPLEMENTATION_BACKLOG.md` |
+| ORION architecture spec (source) | `docs/ORION_Architecture_and_Implementation_Specification.docx` |
+| Wave 1 tracker (memory + events) | `docs/audit/ORION_SPEC_WAVE_STATUS.md` |
+| ADR 001 Memory Gateway | `docs/adr/001-memory-gateway.md` |
+| ADR 002 Event backbone | `docs/adr/002-event-backbone.md` |
 | Build guide (historical) | `AI_CICD_Pipeline_Copilot_Build_Guide.md` |
 
 ---
@@ -2248,6 +2320,25 @@ total = token_score + fuzzy_score + path_boost  (threshold > 0.5)
 **Returns:** top_k=3 `{path, content[:500], score}`
 
 **Indexing:** orchestrator calls `retriever.index_files(repo_files)` on submit.
+
+### 38.3 Memory Gateway (ORION-ARCH-001 §6)
+
+**Library:** `shared/memory_gateway/` — single governed interface (MEM-01). All stacks that write organizational memory should use this module, not ad-hoc stores.
+
+| Concern | Implementation |
+|---------|----------------|
+| Persistence (Wave 1) | `MemorySqliteStore` — `.local/orion-memory.db` |
+| Layers | L1–L6 modeled; **L2 episodic** used for pipeline terminal summaries |
+| Redaction | `prepare_memory_body()` fail-closed on secrets (MEM-03) |
+| Injection defense | Quarantine records matching instruction-injection patterns |
+| Context packing | `_pack_context()` wraps body as untrusted `[MEMORY_REF]` blocks (MEM-04) |
+| Dedup | Per-tenant `content_hash` |
+
+**ORION:** `get_memory_gateway()`, routes `memory_v2.py`, `events_v2.py`, orchestrator terminal hooks.  
+**Canonical:** `memory_gateway_client.py`, `memory_extractor.py`, `pipeline_terminal_hooks.py`.  
+**Hub:** `fetch_orion_platform_events()`; Operations Center `memory_panel` + `platform_events`.
+
+**Wave 4 (planned):** Postgres + pgvector for L3 semantic retrieval without API breakage.
 
 ---
 

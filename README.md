@@ -1,6 +1,8 @@
 # Binary-v2 (ORION)
 
 **ORION — AI-Native Software Delivery & Reliability Control Plane**
+run - python scripts\sync_github_oauth.py
+.\run_all_stacks.ps1 -SkipInstall
 
 Multi-stack DevOps automation workspace: autonomous pipeline agents, gate fusion, change risk intelligence, multimodal analysis, cross-stack Command Hub, and production-oriented security controls.
 

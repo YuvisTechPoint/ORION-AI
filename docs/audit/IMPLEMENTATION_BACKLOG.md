@@ -1,6 +1,7 @@
 # Binary-v2 / ORION — Implementation Backlog (Phase 0 → Roadmap)
 
 **Source:** User roadmap Phases 0–29 mapped against Phase 0 audit (2026-10-06).  
+**Cursor prompts & engineering contract:** [`docs/CURSOR_PHASE_ROADMAP.md`](../CURSOR_PHASE_ROADMAP.md)  
 **Principle:** Extend existing architecture; no monolith rewrite.
 
 **Status key:** `Done` · `Partial` · `Next` · `Planned` · `Deferred`
@@ -597,10 +598,11 @@ Per `docs/ORION_Architecture_and_Implementation_Specification.docx` — interfac
 | Canonical gateway client | **Done** | `backend/services/memory_gateway_client.py` |
 | Canonical episodic extractor + hooks | **Done** | `memory_extractor.py`, `pipeline_terminal_hooks.py` |
 | Hub platform events federation | **Done** | `hub/federation/platform_events.py`, ops center UI |
+| Hub platform-events SSE | **Done** | `GET /api/v1/control-plane/platform-events/stream`, Operations Center live list |
 | Wave tracker | **Done** | `docs/audit/ORION_SPEC_WAVE_STATUS.md` |
 | Tests | **Done** | ORION + canonical memory/event tests |
 
-**Next (Wave 4):** Postgres/pgvector store, Hub live Redis SSE subscriber.
+**Next (Wave 4):** Postgres/pgvector store, optional Hub direct Redis stream reader (SSE polls ORION today).
 
 ---
 

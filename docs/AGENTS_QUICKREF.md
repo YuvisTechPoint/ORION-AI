@@ -1143,6 +1143,7 @@ Extend `submit_code()` stage block; persist artifact; call `fuse_stage_results()
 | Grafana import | `observability/grafana/README.md` |
 | **Production runbook** | `docs/PRODUCTION_RUNBOOK.md` |
 | Implementation backlog | `docs/audit/IMPLEMENTATION_BACKLOG.md` |
+| Cursor phase roadmap (0–29) | `docs/CURSOR_PHASE_ROADMAP.md` |
 | Build guide (historical) | `AI_CICD_Pipeline_Copilot_Build_Guide.md` |
 
 ---

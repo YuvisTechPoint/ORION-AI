@@ -251,7 +251,7 @@
 | Part II §58–§67 many 📋 | Several are **Partial/Foundation** in ORION already — doc markers stale |
 | Part II §70 killer workflow all ✅ | Accurate for ORION happy-path; not all steps are production-grade OTEL/canary |
 | Canonical parity with ORION | **No** — lighter scanners, simulated QA default |
-| Unified control plane | **No** — Hub is launcher |
+| Unified control plane | **Partial** — Hub BFF + explorer + Operations Center; full org/project registry persistence optional |
 
 ---
 

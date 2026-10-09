@@ -206,6 +206,67 @@ async def control_plane_platform_events(
     )
 
 
+def _event_identity(event: dict[str, Any]) -> str:
+    eid = str(event.get("event_id") or "").strip()
+    if eid:
+        return eid
+    return json.dumps(event, sort_keys=True, default=str)
+
+
+async def _platform_event_stream(
+    correlation_id: str,
+    *,
+    event_type: str | None,
+    max_ticks: int,
+    poll_seconds: float = 3.0,
+    snapshot_limit: int = 10,
+):
+    seen: set[str] = set()
+    for tick in range(max_ticks):
+        data = await fetch_orion_platform_events(
+            correlation_id=correlation_id,
+            limit=50,
+            event_type=event_type,
+        )
+        if not data.get("available"):
+            payload = {"kind": "error", "message": data.get("error") or "platform_events_unavailable"}
+            yield f"data: {json.dumps(payload)}\n\n"
+            break
+        events = list(data.get("events") or [])
+        new_events: list[dict[str, Any]] = []
+        for event in events:
+            key = _event_identity(event)
+            if key in seen:
+                continue
+            seen.add(key)
+            new_events.append(event)
+        if tick == 0:
+            for event in new_events[-snapshot_limit:]:
+                yield f"data: {json.dumps({'kind': 'platform_event', 'event': event})}\n\n"
+        else:
+            for event in new_events:
+                yield f"data: {json.dumps({'kind': 'platform_event', 'event': event})}\n\n"
+        await asyncio.sleep(poll_seconds)
+    yield f"data: {json.dumps({'kind': 'complete'})}\n\n"
+
+
+@app.get("/api/v1/control-plane/platform-events/stream")
+async def control_plane_platform_events_stream(
+    request: Request,
+    event_type: str | None = None,
+    max_ticks: int = Query(default=120, ge=1, le=600),
+) -> StreamingResponse:
+    return StreamingResponse(
+        _platform_event_stream(
+            request.state.correlation_id,
+            event_type=event_type,
+            max_ticks=max_ticks,
+        ),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 async def _pipeline_event_stream(run_id: str, correlation_id: str):
     last_status: str | None = None
     for _ in range(120):

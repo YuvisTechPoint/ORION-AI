@@ -149,6 +149,38 @@ def test_platform_events_endpoint(client):
     assert resp.json()["count"] == 2
 
 
+def test_platform_events_stream(client):
+    tick = 0
+
+    async def fake_fetch(**_kwargs):
+        nonlocal tick
+        tick += 1
+        if tick == 1:
+            return {
+                "available": True,
+                "events": [{"event_id": "e1", "event_type": "pipeline.started", "correlation_id": "c1"}],
+            }
+        return {
+            "available": True,
+            "events": [
+                {"event_id": "e1", "event_type": "pipeline.started", "correlation_id": "c1"},
+                {"event_id": "e2", "event_type": "pipeline.completed", "correlation_id": "c1"},
+            ],
+        }
+
+    with patch("hub.server.fetch_orion_platform_events", new=AsyncMock(side_effect=fake_fetch)):
+        with patch("hub.server.asyncio.sleep", new=AsyncMock()):
+            with client.stream(
+                "GET",
+                "/api/v1/control-plane/platform-events/stream?max_ticks=2",
+            ) as resp:
+                assert resp.status_code == 200
+                body = "".join(resp.iter_text())
+    assert "pipeline.started" in body
+    assert "pipeline.completed" in body
+    assert '"kind": "complete"' in body or '"kind":"complete"' in body.replace(" ", "")
+
+
 def test_ops_panels_from_capabilities():
     from hub.federation.operations_center import _ops_panels
     from hub.federation.models import StackIntelligenceSnapshot

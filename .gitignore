@@ -57,3 +57,6 @@ Thumbs.db
 .local_processes.json
 .local_stacks.json
 .env.prod.infra
+
+# Duplicate Office downloads (keep canonical spec docx tracked)
+docs/ORION_Architecture_and_Implementation_Specification (*).docx

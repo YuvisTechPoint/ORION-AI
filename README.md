@@ -6,7 +6,7 @@ run - python scripts\sync_github_oauth.py
 
 Multi-stack DevOps automation workspace: autonomous pipeline agents, gate fusion, change risk intelligence, multimodal analysis, cross-stack Command Hub, and production-oriented security controls.
 
-**ORION phased roadmap (Phases 0–30):** fully implemented in `ai-cicd-pipeline/` — see [`agents.md`](agents.md), [`docs/ORION_Advanced_Feature_Expansion_Report.md`](docs/ORION_Advanced_Feature_Expansion_Report.md), [`docs/AGENTS_QUICKREF.md`](docs/AGENTS_QUICKREF.md), and [`docs/audit/IMPLEMENTATION_BACKLOG.md`](docs/audit/IMPLEMENTATION_BACKLOG.md). Configure via `ai-cicd-pipeline/.env.example`.
+**ORION phased roadmap (Phases 0–30):** scaffolding shipped in `ai-cicd-pipeline/` (harden with real external tools where marked partial) — see [`docs/CURSOR_PHASE_ROADMAP.md`](docs/CURSOR_PHASE_ROADMAP.md), [`agents.md`](agents.md), [`docs/audit/IMPLEMENTATION_BACKLOG.md`](docs/audit/IMPLEMENTATION_BACKLOG.md). Configure via `ai-cicd-pipeline/.env.example`.
 
 | Stack | Path | API | UI | Role |
 |-------|------|-----|-----|------|

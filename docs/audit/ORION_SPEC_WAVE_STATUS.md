@@ -35,7 +35,7 @@ Tracker aligned to `docs/ORION_Architecture_and_Implementation_Specification.doc
 |------|--------|
 | Postgres + pgvector memory store | 📋 |
 | Embedding-based semantic retrieval (L3) | 📋 |
-| Hub live Redis subscriber (SSE) | 📋 |
+| Hub live platform-events SSE (poll ORION `/api/v2/events/recent`) | ✅ |
 
 ## Verification
 
@@ -45,4 +45,4 @@ cd ai-cicd-pipeline
 .\run_e2e_all.ps1 -Offline
 ```
 
-*Cross-reference: `docs/adr/001-memory-gateway.md`, `docs/adr/002-event-backbone.md`, `docs/audit/FEATURE_MATRIX.md`*
+*Cross-reference: `docs/adr/001-memory-gateway.md`, `docs/adr/002-event-backbone.md`, `docs/CURSOR_PHASE_ROADMAP.md`, `docs/audit/FEATURE_MATRIX.md`*

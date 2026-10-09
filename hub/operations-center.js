@@ -1,6 +1,7 @@
 /** Operations Center — federated SLO, fleet, incidents, and blockers */
 (function () {
 const CP_BASE = "/api/v1/control-plane";
+let platformEventSource = null;
 
 async function opsFetch(path) {
   const res = await fetch(`${CP_BASE}${path}`, { cache: "no-store" });
@@ -79,12 +80,14 @@ async function renderOperationsCenter() {
         </div>
         <div class="ops-col">
           <h3>Platform events</h3>
-          ${events.length ? `<ul class="ops-list">${events.slice(0, 8).map((e) => `<li>${esc(e.event_type)} · ${esc(e.correlation_id || "")}</li>`).join("")}</ul>` : `<p class="cp-empty">No recent platform events.</p>`}
+          <ul class="ops-list" id="ops-platform-events-list">
+            ${events.length ? events.slice(0, 8).map((e) => `<li>${esc(e.event_type)} · ${esc(e.correlation_id || "")}</li>`).join("") : `<li class="cp-empty">No recent platform events.</li>`}
+          </ul>
         </div>
         <div class="ops-col">
           <h3>Event feed status</h3>
           <p class="cp-meta">source ${esc(platformEvents.source || "—")} · count ${platformEvents.count ?? 0}</p>
-          <p class="cp-meta">${platformEvents.available ? "ORION /api/v2/events/recent" : esc(platformEvents.error || "unavailable")}</p>
+          <p class="cp-meta" id="ops-platform-events-live">${platformEvents.available ? "Live SSE: connecting…" : esc(platformEvents.error || "unavailable")}</p>
         </div>
       </div>
       <div class="ops-columns">
@@ -97,9 +100,48 @@ async function renderOperationsCenter() {
           ${alerts.length ? `<ul class="ops-list">${alerts.map((a) => `<li>[${esc(a.stack)}] ${esc(a.code || a.message || JSON.stringify(a))}</li>`).join("")}</ul>` : `<p class="cp-empty">No active alerts.</p>`}
         </div>
       </div>`;
+    wirePlatformEventStream(platformEvents.available);
   } catch {
     panel.innerHTML = `<p class="cp-empty">Operations center unavailable — start hub BFF and stacks.</p>`;
+    wirePlatformEventStream(false);
   }
+}
+
+function wirePlatformEventStream(available) {
+  if (platformEventSource) {
+    platformEventSource.close();
+    platformEventSource = null;
+  }
+  const statusEl = document.getElementById("ops-platform-events-live");
+  const listEl = document.getElementById("ops-platform-events-list");
+  if (!available || !statusEl) return;
+  const es = new EventSource(`${CP_BASE}/platform-events/stream`);
+  platformEventSource = es;
+  es.onopen = () => {
+    statusEl.textContent = "Live SSE: connected (ORION platform events)";
+  };
+  es.onmessage = (msg) => {
+    try {
+      const payload = JSON.parse(msg.data);
+      if (payload.kind === "platform_event" && payload.event && listEl) {
+        const e = payload.event;
+        const li = document.createElement("li");
+        li.textContent = `${e.event_type || "event"} · ${e.correlation_id || ""}`;
+        const empty = listEl.querySelector(".cp-empty");
+        if (empty) empty.remove();
+        listEl.prepend(li);
+        while (listEl.children.length > 12) listEl.removeChild(listEl.lastChild);
+      }
+      if (payload.kind === "error") {
+        statusEl.textContent = `Live SSE: ${payload.message || "error"}`;
+      }
+    } catch {
+      /* ignore malformed SSE payloads */
+    }
+  };
+  es.onerror = () => {
+    statusEl.textContent = "Live SSE: disconnected (retrying…)";
+  };
 }
 
 function wireOperationsCenter() {

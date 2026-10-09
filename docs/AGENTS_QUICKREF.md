@@ -55,6 +55,8 @@ Today ORION **automates the full software delivery loop** from code change to de
 | **SLO intelligence + Slack** | Success/failure/blocked rates with deduped alerts | All stacks |
 | **Hybrid file retriever** | Keyword + fuzzy path scoring for LLM context | Canonical |
 | **SQLite agent memory** | Last N prompt/response pairs per agent scope | Canonical |
+| **Memory Gateway** | Governed L1–L6 API; L2 episodic on terminal pipeline | ORION + Canonical (`shared/memory_gateway/`) |
+| **Platform event backbone** | `pipeline.started` / `pipeline.completed` | ORION + Canonical; Hub `/control-plane/platform-events` |
 | **Correlated log monitoring** | Log type + gate verdict fusion hints | All stacks |
 | **Multimodal analysis suite** | 6 on-demand agents (logs, git, payment, triage, â€¦) | ORION (+ proxy) |
 | **Prometheus metrics** | HTTP counters, pipeline counters, webhook counters | ORION, Canonical |

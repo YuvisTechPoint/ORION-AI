@@ -2340,7 +2340,7 @@ total = token_score + fuzzy_score + path_boost  (threshold > 0.5)
 **Canonical:** `memory_gateway_client.py`, `memory_extractor.py`, `pipeline_terminal_hooks.py`.  
 **Hub:** `fetch_orion_platform_events()`; Operations Center `memory_panel` + `platform_events`.
 
-**Wave 4 (planned):** Postgres + pgvector for L3 semantic retrieval without API breakage.
+**Wave 4 (shipped):** `MemoryPgStore` + deterministic L3 embeddings; enable via `MEMORY_BACKEND=postgres` and `scripts/init_memory_pgvector.sql`.
 
 ---
 

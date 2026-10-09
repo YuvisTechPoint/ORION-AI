@@ -1342,6 +1342,7 @@ Extend `submit_code()` stage block; persist artifact; call `fuse_stage_results()
 | Implementation backlog | `docs/audit/IMPLEMENTATION_BACKLOG.md` |
 | ORION architecture spec (source) | `docs/ORION_Architecture_and_Implementation_Specification.docx` |
 | Wave 1 tracker (memory + events) | `docs/audit/ORION_SPEC_WAVE_STATUS.md` |
+| **Advanced expansion report** | `docs/ORION_Advanced_Feature_Expansion_Report.md` |
 | ADR 001 Memory Gateway | `docs/adr/001-memory-gateway.md` |
 | ADR 002 Event backbone | `docs/adr/002-event-backbone.md` |
 | Build guide (historical) | `AI_CICD_Pipeline_Copilot_Build_Guide.md` |
@@ -3401,9 +3402,11 @@ Auto-compute four metrics + elite/high/medium/low band with **explanation of why
 
 **Baseline:** 🔄 WebSocket events, Redis pub/sub (§24), Celery tasks (§32)
 
-### O1. Event bus 📋
+### O1. Event bus 🔄 partial
 
-Domain events: `CommitCreated`, `PipelineStarted`, `SecurityCompleted`, `DeploymentFailed`, `IncidentDetected`, `RollbackCompleted` — agents subscribe without orchestrator edits.
+**Shipped (Wave 1):** `shared/event_bus/`, `PlatformEvent` envelope, Redis Streams + in-memory fallback; `pipeline.started` / `pipeline.completed` from ORION + canonical orchestrators; Hub `GET /control-plane/platform-events`; ORION `GET /api/v2/events/recent`.
+
+**Planned:** Full domain catalog (`CommitCreated`, `SecurityCompleted`, `IncidentDetected`, …) and agent subscriptions without orchestrator edits.
 
 ### O2. Agent registry 📋
 
@@ -3435,9 +3438,9 @@ Commit → Build → Image → SBOM → Deployment → Runtime
 
 First-class artifact objects: type, version, producer, evidence, confidence, dependencies, retention.
 
-### P2. Release Passport 📋
+### P2. Release Passport ✅
 
-Enterprise artifact per production deploy:
+Enterprise artifact per production deploy (ORION `release_passport` pre-deploy gate):
 
 ```text
 Release v3.8.2 | Commit a72bc19 | Tests 1,284 PASS | Security 0 Critical

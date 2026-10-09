@@ -26,11 +26,14 @@ def get_memory_gateway() -> MemoryGateway:
         enabled=_enabled(),
         backend=os.getenv("MEMORY_BACKEND", "sqlite"),
         sqlite_path=os.getenv("MEMORY_SQLITE_PATH", ".local/orion-memory.db"),
+        postgres_url=os.getenv("MEMORY_POSTGRES_URL", ""),
+        embedding_dims=int(os.getenv("MEMORY_EMBEDDING_DIMS", "384")),
         min_confidence=float(os.getenv("MEMORY_MIN_CONFIDENCE", "0.5")),
         quarantine_enabled=os.getenv("MEMORY_QUARANTINE_ENABLED", "true").lower() in {"1", "true", "yes"},
         context_token_budget=int(os.getenv("MEMORY_CONTEXT_TOKEN_BUDGET", "3000")),
     )
-    return MemoryGateway(cfg)
+    fallback = os.getenv("SYNC_DATABASE_URL") or os.getenv("DATABASE_URL", "")
+    return MemoryGateway(cfg, fallback_database_url=fallback)
 
 
 def write_memory_record(request: MemoryWriteRequest) -> dict[str, Any]:

@@ -258,6 +258,8 @@ class Settings(BaseSettings):
     memory_quarantine_enabled: bool = Field(default=True, alias="MEMORY_QUARANTINE_ENABLED")
     memory_context_token_budget: int = Field(default=3000, alias="MEMORY_CONTEXT_TOKEN_BUDGET")
     memory_ttl_days_episodic: int = Field(default=365, alias="MEMORY_TTL_DAYS_EPISODIC")
+    memory_postgres_url: str = Field(default="", alias="MEMORY_POSTGRES_URL")
+    memory_embedding_dims: int = Field(default=384, alias="MEMORY_EMBEDDING_DIMS")
     event_bus_enabled: bool = Field(default=True, alias="EVENT_BUS_ENABLED")
     event_bus_backend: str = Field(default="auto", alias="EVENT_BUS_BACKEND")
     retriever_backend: str = Field(default="hybrid", alias="RETRIEVER_BACKEND")

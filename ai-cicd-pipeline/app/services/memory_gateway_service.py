@@ -23,12 +23,14 @@ def get_memory_gateway() -> MemoryGateway:
         enabled=settings.memory_gateway_enabled,
         backend=settings.memory_backend,
         sqlite_path=settings.memory_sqlite_path,
+        postgres_url=settings.memory_postgres_url,
+        embedding_dims=settings.memory_embedding_dims,
         min_confidence=settings.memory_min_confidence,
         quarantine_enabled=settings.memory_quarantine_enabled,
         context_token_budget=settings.memory_context_token_budget,
         episodic_ttl_days=settings.memory_ttl_days_episodic,
     )
-    return MemoryGateway(cfg)
+    return MemoryGateway(cfg, fallback_database_url=settings.sync_database_url)
 
 
 def tenant_from_repo(repo_full_name: str) -> str:

@@ -106,7 +106,7 @@ are implemented to the degree appropriate for that feature—not when an endpoin
 | 14 | 🟡 | Multimodal expansion | **Partial** | 6 core agents; K8s/Terraform agents backlog |
 | 15 | 🟡 | Kubernetes / cloud | **Partial** | `kubernetes_manifest_scan`, `cloud_intelligence` |
 | 16 | 🟡 | Service catalog / IDP | **Done** | `service_catalog`, Hub fleet |
-| 17 | 🟡 | RAG + memory | **Partial** | canonical retriever; ORION **Memory Gateway** Wave 1; pgvector 📋 |
+| 17 | 🟡 | RAG + memory | **Partial** | Memory Gateway Wave 1 + **pgvector store**; DevOps RAG heuristics |
 | 18 | 🟡 | Agent mesh | **Done** | `agent_mesh_intelligence`, registry |
 | 19 | 🟡 | AI governance | **Done** | eval, injection gate, decision ledger |
 | 20 | 🟡 | FinOps | **Partial** | `cost_report`, `finops_intelligence` |
@@ -260,7 +260,7 @@ Full feature lists and agent names are in the user roadmap and in [`IMPLEMENTATI
 | P0 | Real scanner integrations (Semgrep, Trivy, Gitleaks) + reachable SCA | 4–5 |
 | P0 | Cross-stack scanner parity documentation + DevOps depth | 4 |
 | P1 | Production OTEL collector path | 9 |
-| P1 | Postgres/pgvector memory (Wave 4) | 17 |
+| P1 | API-backed embeddings + RAG index at scale | 17 |
 | P1 | Hub live platform-event SSE | 1, 23 — **Done** (`GET /control-plane/platform-events/stream`) |
 | P2 | Multi-person approval workflows (beyond artifact) | 13 |
 | P2 | Real cloud deploy runbook execution | 30 |

@@ -33,8 +33,8 @@ Tracker aligned to `docs/ORION_Architecture_and_Implementation_Specification.doc
 
 | Item | Status |
 |------|--------|
-| Postgres + pgvector memory store | 📋 |
-| Embedding-based semantic retrieval (L3) | 📋 |
+| Postgres + pgvector memory store | ✅ |
+| Embedding-based semantic retrieval (L3) | ✅ (deterministic embedder; swap API later) |
 | Hub live platform-events SSE (poll ORION `/api/v2/events/recent`) | ✅ |
 
 ## Verification

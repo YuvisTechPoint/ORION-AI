@@ -41,10 +41,15 @@ class MemoryReadQuery(BaseModel):
 @router.get("/health")
 async def memory_health() -> dict[str, Any]:
     gateway = get_memory_gateway()
+    store = gateway.store
+    vector_enabled = bool(getattr(store, "vector_enabled", False))
     return {
         "enabled": gateway.config.enabled,
         "backend": gateway.config.backend,
         "sqlite_path": gateway.config.sqlite_path,
+        "postgres_configured": bool(gateway.config.postgres_url),
+        "embedding_dims": gateway.config.embedding_dims,
+        "vector_search": vector_enabled,
         "quarantine_enabled": gateway.config.quarantine_enabled,
     }
 

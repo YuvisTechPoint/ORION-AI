@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — Wave 1 interfaces shipped (SQLite backend); Wave 4 targets Postgres/pgvector.
+Accepted — Wave 1 SQLite + Wave 4 Postgres/pgvector (`MemoryPgStore`, deterministic L3 embeddings).
 
 ## Context
 
@@ -20,7 +20,7 @@ ORION agents and pipelines need durable, governed memory across runs without let
 
 ## Consequences
 
-- SQLite is sufficient for local/dev and Wave 1 contract tests; production scale moves to Postgres + pgvector in Wave 4 without API breakage.
+- SQLite remains default for local/dev; set `MEMORY_BACKEND=postgres` (+ `pgvector` extension) for semantic L3 search without API breakage.
 - Duplicate content hashes dedupe writes per tenant.
 - Injection-shaped memory is quarantined, not stored as active records.
 

@@ -602,7 +602,9 @@ Per `docs/ORION_Architecture_and_Implementation_Specification.docx` — interfac
 | Wave tracker | **Done** | `docs/audit/ORION_SPEC_WAVE_STATUS.md` |
 | Tests | **Done** | ORION + canonical memory/event tests |
 
-**Next (Wave 4):** Postgres/pgvector store, optional Hub direct Redis stream reader (SSE polls ORION today).
+**Wave 4 memory (shipped):** `MemoryPgStore`, `MEMORY_BACKEND=postgres`, L3 vector search, `scripts/init_memory_pgvector.sql`.
+
+**Next:** Optional Hub direct Redis stream reader; API-backed embedding provider for L3.
 
 ---
 

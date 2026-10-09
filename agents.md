@@ -2329,7 +2329,7 @@ total = token_score + fuzzy_score + path_boost  (threshold > 0.5)
 
 | Concern | Implementation |
 |---------|----------------|
-| Persistence (Wave 1) | `MemorySqliteStore` — `.local/orion-memory.db` |
+| Persistence | `MemorySqliteStore` (default) · `MemoryPgStore` when `MEMORY_BACKEND=postgres` + `pgvector` |
 | Layers | L1–L6 modeled; **L2 episodic** used for pipeline terminal summaries |
 | Redaction | `prepare_memory_body()` fail-closed on secrets (MEM-03) |
 | Injection defense | Quarantine records matching instruction-injection patterns |
@@ -3405,7 +3405,7 @@ Auto-compute four metrics + elite/high/medium/low band with **explanation of why
 
 ### O1. Event bus 🔄 partial
 
-**Shipped (Wave 1):** `shared/event_bus/`, `PlatformEvent` envelope, Redis Streams + in-memory fallback; `pipeline.started` / `pipeline.completed` from ORION + canonical orchestrators; Hub `GET /control-plane/platform-events`; ORION `GET /api/v2/events/recent`.
+**Shipped (Wave 1):** `shared/event_bus/`, `PlatformEvent` envelope, Redis Streams + in-memory fallback; `pipeline.started` / `pipeline.completed` from ORION + canonical orchestrators; Hub `GET /control-plane/platform-events` and live `GET /control-plane/platform-events/stream` (SSE); ORION `GET /api/v2/events/recent`.
 
 **Planned:** Full domain catalog (`CommitCreated`, `SecurityCompleted`, `IncidentDetected`, …) and agent subscriptions without orchestrator edits.
 

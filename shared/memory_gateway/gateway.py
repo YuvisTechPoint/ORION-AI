@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from shared.memory_gateway.config import MemoryGatewayConfig
 from shared.memory_gateway.models import (
     MemoryReadRequest,
     MemoryRecord,
@@ -17,29 +17,24 @@ from shared.memory_gateway.models import (
     utc_now_iso,
 )
 from shared.memory_gateway.redaction import looks_like_injection, prepare_memory_body
-from shared.memory_gateway.store import MemorySqliteStore
-
-
-@dataclass
-class MemoryGatewayConfig:
-    enabled: bool = True
-    backend: str = "sqlite"
-    sqlite_path: str = ".local/orion-memory.db"
-    min_confidence: float = 0.5
-    quarantine_enabled: bool = True
-    context_token_budget: int = 3000
-    episodic_ttl_days: int = 365
+from shared.memory_gateway.factory import build_memory_store
 
 
 class MemoryGateway:
     """All memory reads and writes MUST pass through this gateway (MEM-01)."""
 
-    def __init__(self, config: MemoryGatewayConfig, store: MemorySqliteStore | None = None) -> None:
+    def __init__(
+        self,
+        config: MemoryGatewayConfig,
+        store: object | None = None,
+        *,
+        fallback_database_url: str | None = None,
+    ) -> None:
         self.config = config
-        self._store = store or MemorySqliteStore(config.sqlite_path)
+        self._store = store or build_memory_store(config, fallback_database_url)
 
     @property
-    def store(self) -> MemorySqliteStore:
+    def store(self) -> object:
         return self._store
 
     def write(self, request: MemoryWriteRequest) -> dict[str, Any]:

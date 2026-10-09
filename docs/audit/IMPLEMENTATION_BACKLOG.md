@@ -576,6 +576,14 @@ Verify:  .\run_production.ps1 -SkipInstall  |  .\run_e2e_all.ps1 -Offline
 
 ---
 
+## Strategic expansion report · **Done**
+
+| Item | Status | Deliverable |
+|------|--------|-------------|
+| Advanced Feature & Architecture Expansion Report | **Done** | `docs/ORION_Advanced_Feature_Expansion_Report.md` (snapshot + links to `agents.md` §48–§71) |
+
+---
+
 ## ORION-ARCH-001 — Wave 1 foundations (Memory + Events) · **Done**
 
 Per `docs/ORION_Architecture_and_Implementation_Specification.docx` — interfaces defined early for Wave 4 memory mesh.

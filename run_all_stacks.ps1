@@ -238,6 +238,19 @@ if ($started.Count -gt 0) {
     $started | ConvertTo-Json | Set-Content -Path $processFile -Encoding UTF8
 }
 
+$syncScript = Join-Path $root "scripts\sync_stack_catalog.ps1"
+if (Test-Path $syncScript) { & $syncScript }
+$wiringScript = Join-Path $root "scripts\verify_architecture_wiring.py"
+if (Test-Path $wiringScript) {
+    & $python $wiringScript
+    if ($LASTEXITCODE -ne 0) { throw "Architecture wiring verification failed after stack launch." }
+}
+$liveScript = Join-Path $root "scripts\verify_stacks_live.py"
+if (Test-Path $liveScript) {
+    & $python $liveScript
+    if ($LASTEXITCODE -ne 0) { throw "Live stack health verification failed — check stack logs." }
+}
+
 Write-Host ''
 Write-Host 'Stacks running (devops uses inline executor when Redis is unavailable):' -ForegroundColor Green
 $started | ForEach-Object { Write-Host ('  ' + $_.stack + ': ' + $_.url + ' (PID ' + $_.pid + ')') }

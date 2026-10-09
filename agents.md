@@ -1344,6 +1344,7 @@ Extend `submit_code()` stage block; persist artifact; call `fuse_stage_results()
 | Wave 1 tracker (memory + events) | `docs/audit/ORION_SPEC_WAVE_STATUS.md` |
 | **Advanced expansion report** | `docs/ORION_Advanced_Feature_Expansion_Report.md` |
 | **Cursor phase roadmap (0–29 prompts)** | `docs/CURSOR_PHASE_ROADMAP.md` |
+| **Continuous verification** | `docs/CONTINUOUS_VERIFICATION.md` |
 | ADR 001 Memory Gateway | `docs/adr/001-memory-gateway.md` |
 | ADR 002 Event backbone | `docs/adr/002-event-backbone.md` |
 | Build guide (historical) | `AI_CICD_Pipeline_Copilot_Build_Guide.md` |

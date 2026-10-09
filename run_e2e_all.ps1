@@ -32,6 +32,11 @@ function Invoke-StepCommand {
 
 Write-Host "=== Binary-v2 full E2E verification ===" -ForegroundColor Cyan
 
+$step = 0
+Write-Host "`n[0] Architecture wiring verification..." -ForegroundColor Yellow
+Invoke-StepCommand { & $python (Join-Path $root "scripts/verify_architecture_wiring.py") }
+Invoke-StepCommand { & $python -m pytest (Join-Path $root "tests/test_architecture_wiring.py") -q --tb=line }
+
 $steps = [System.Collections.Generic.List[string]]::new()
 if (-not $SkipCanonical) { [void]$steps.Add("canonical") }
 if (-not $SkipAiCicd) {

@@ -29,8 +29,13 @@ Multi-stack DevOps automation workspace: autonomous pipeline agents, gate fusion
 # Create venv once (if needed)
 python -m venv .venv
 
-# Full test verification (all stacks + Playwright hub smoke)
+# Full test verification (wiring guard + all stacks + Playwright hub smoke)
 .\run_e2e_all.ps1 -Offline
+
+# Structural architecture/wiring only (no pytest matrix)
+.\.venv\Scripts\python.exe scripts\verify_architecture_wiring.py
+# After run_all_stacks.ps1 — live health + Hub control-plane probe
+.\.venv\Scripts\python.exe scripts\verify_stacks_live.py
 
 # Unified command hub + all three stacks
 .\run_all_stacks.ps1

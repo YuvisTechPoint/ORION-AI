@@ -1,0 +1,53 @@
+name: Nightly verification
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  full-offline-matrix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+          python -m pip install -r ai-cicd-pipeline/requirements.txt
+          python -m pip install -r devops-platform/backend/requirements.txt
+          python -m pip install pytest pytest-asyncio httpx
+
+      - name: Architecture wiring
+        run: python scripts/verify_architecture_wiring.py
+
+      - name: ORION offline E2E
+        working-directory: ai-cicd-pipeline
+        env:
+          APP_ENV: test
+          DATABASE_URL: sqlite+aiosqlite:///:memory:
+          SYNC_DATABASE_URL: sqlite:///:memory:
+          PIPELINE_EXECUTOR: inline
+          DEPLOY_MODE: simulate
+        run: |
+          pytest tests/ -q --tb=line
+          python scripts/e2e_run.py --scenario pass --offline
+
+      - name: Hub Playwright smoke
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install chromium --with-deps
+          npx playwright test tests/hub.spec.ts tests/operations.spec.ts --reporter=line
